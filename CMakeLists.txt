@@ -8,8 +8,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Bundled third-party libraries
+add_subdirectory(third_party/fmt)
+set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "Use external fmt library" FORCE)
 add_subdirectory(third_party/spdlog)
 add_subdirectory(third_party/json)
+
+# System-installed ZooKeeper C client
+find_path(ZOOKEEPER_INCLUDE_DIR zookeeper/zookeeper.h PATHS /usr/include NO_DEFAULT_PATH)
+find_library(ZOOKEEPER_LIBRARY libzookeeper_mt.a PATHS /usr/lib/x86_64-linux-gnu NO_DEFAULT_PATH)
+add_library(zookeeper_mt STATIC IMPORTED)
+target_include_directories(zookeeper_mt INTERFACE ${ZOOKEEPER_INCLUDE_DIR})
+set_target_properties(zookeeper_mt PROPERTIES IMPORTED_LOCATION ${ZOOKEEPER_LIBRARY})
 
 # Project library (interface target: header-only for now, ready for src/ expansion)
 add_library(rpc INTERFACE)
@@ -19,6 +28,8 @@ target_include_directories(rpc INTERFACE
 target_link_libraries(rpc INTERFACE
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    zookeeper_mt
+    pthread
 )
 
 # Test executable
