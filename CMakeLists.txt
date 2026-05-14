@@ -20,12 +20,14 @@ add_library(zookeeper_mt STATIC IMPORTED)
 target_include_directories(zookeeper_mt INTERFACE ${ZOOKEEPER_INCLUDE_DIR})
 set_target_properties(zookeeper_mt PROPERTIES IMPORTED_LOCATION ${ZOOKEEPER_LIBRARY})
 
-# Project library (interface target: header-only for now, ready for src/ expansion)
-add_library(rpc INTERFACE)
-target_include_directories(rpc INTERFACE
+# Project library
+add_library(rpc STATIC
+    src/registry/services_registry.cpp
+)
+target_include_directories(rpc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
-target_link_libraries(rpc INTERFACE
+target_link_libraries(rpc PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     zookeeper_mt
