@@ -25,7 +25,7 @@ ServiceRegistry::ServiceRegistry(const std::string& zk_hosts) : imp_(std::make_u
     zoo_set_debug_level(ZOO_LOG_LEVEL_ERROR);
 
     imp_->zk_handle_ = zookeeper_init(zk_hosts.c_str(), 
-                                    GlobalWatcher, 
+                                    GlobalWatcher_, 
                                     3000, 
                                     0,
                                     this,
@@ -99,7 +99,7 @@ bool ServiceRegistry::EnsurePath_(const std::string& path) {
     size_t pos = path.find_last_of('/');
     if (pos != std::string::npos && pos > 0) {
         std::string parent = path.substr(0, pos);
-        if (!parent.empty() && !EnsurePath(parent)) {
+        if (!parent.empty() && !EnsurePath_(parent)) {
             LOG_ERROR("Failed to create parent path: {}", parent);
             return false;
         }
