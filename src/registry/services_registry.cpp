@@ -16,7 +16,7 @@
 
 struct ServiceRegistry::Imp
 {
-    static constexpr std::string ROOT_PATH = "/cookrpc";
+    inline static const std::string ROOT_PATH{"/cookrpc"};
     bool is_connect_{false};
     zhandle_t* zk_handle_{nullptr};
 };
