@@ -21,9 +21,8 @@ target_include_directories(zookeeper_mt INTERFACE ${ZOOKEEPER_INCLUDE_DIR})
 set_target_properties(zookeeper_mt PROPERTIES IMPORTED_LOCATION ${ZOOKEEPER_LIBRARY})
 
 # Project library
-add_library(rpc STATIC
-    src/registry/services_registry.cpp
-)
+file(GLOB_RECURSE RPC_SOURCES CONFIGURE_DEPENDS src/*.cpp)
+add_library(rpc STATIC ${RPC_SOURCES})
 target_include_directories(rpc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
@@ -34,6 +33,13 @@ target_link_libraries(rpc PUBLIC
     pthread
 )
 
-# Test executable
+# Google Test
+add_subdirectory(/home/kaanh/googletest ${CMAKE_BINARY_DIR}/googletest)
+
+# Integration test (ZooKeeper-based)
 add_executable(rpc_test test/main.cpp)
 target_link_libraries(rpc_test PRIVATE rpc)
+
+# Load balancer unit tests
+add_executable(load_balancer_test test/load_balancer_test.cpp)
+target_link_libraries(load_balancer_test PRIVATE rpc gtest gtest_main)

@@ -3,7 +3,10 @@
 #include <unordered_map>
 #include <functional>
 
-#include "load_balance/load_balancer.hpp"
+#include "load_balancer/load_balancer.hpp"
+#include "load_balancer/random.hpp"
+#include "load_balancer/round.hpp"
+#include "load_balancer/weighted.hpp"
 #include "log_manager.hpp"
 
 namespace cookrpc {
@@ -11,17 +14,17 @@ namespace cookrpc {
         struct BalancerFactory {
             static std::shared_ptr<LoadBalancer> createRandom()
             {
-                // return std::make_shared<RandomLoadBalancer>();
+                return std::make_shared<RandomLB>();
             }
 
             static std::shared_ptr<LoadBalancer> createRoundRobin()
             {
-                // return std::make_shared<RoundRobinLoadBalancer>();
+                return std::make_shared<RoundLB>();
             }
 
             static std::shared_ptr<LoadBalancer> createWeighted()
             {
-                // return std::make_shared<WeightedRoundRobinLoadBalancer>();
+                return std::make_shared<WeightedLB>();
             }
 
             static const std::unordered_map<std::string, std::function<std::shared_ptr<LoadBalancer>()>> &getMap()
@@ -37,13 +40,10 @@ namespace cookrpc {
         };
     }
 
-    struct LoadBalancer::Imp {
+    struct Imp {
         inline static std::shared_ptr<LoadBalancer> instance_{nullptr};
-        static std::mutex mtx_;
+        inline static std::mutex mtx_;
     };
-
-    LoadBalancer::LoadBalancer() noexcept = default;
-    LoadBalancer::~LoadBalancer() = default;
 
     std::shared_ptr<LoadBalancer> LoadBalancer::getInstance() {
         if (!Imp::instance_) {
