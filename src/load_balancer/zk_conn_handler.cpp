@@ -1,29 +1,28 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <cstring>
 #include <exception>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <zookeeper/zookeeper.h>
+#include <thread>
 
 #include "load_balancer/zk_conn_handler.hpp"
+#include "load_balancer/load_balancer.hpp"
 #include "log_manager.hpp"
 #include "registry/services_registry.hpp"
-#include "load_balancer/load_balancer.hpp"
 
 namespace cookrpc {
 
 struct ZkConnHandler::Imp {
     std::atomic<bool> running_{false};
+    std::atomic<bool> cleanup_done_{false};
     std::chrono::seconds retry_interval_;
     std::mutex mtx_;
     std::mutex servers_mtx_;
     std::vector<std::string> servers_;
-    zhandle_t *zk_client_{nullptr};
     std::string zk_host_;
-    int zk_port_;
+    int zk_port_{2181};
     std::string zk_namespace_;
     std::unique_ptr<ServiceRegistry> service_registry_{nullptr};
 };
@@ -45,78 +44,48 @@ bool ZkConnHandler::InitZkConnHandler(const nlohmann::json& config) {
             SetZkPort(config.value("zk_port", 2181));
             SetZkNamespace(config.value("zk_namespace", "/cookrpc"));
             SetZkRetryInterval(config.value("zk_retry_interval", 5));
-        } catch (const nlohmann::json::exception &e) {
-            LOG_ERROR("Fail to parse config : {}", e.what());
-            Cleanup();
+        } catch (const nlohmann::json::exception& e) {
+            LOG_ERROR("Fail to parse config: {}", e.what());
             return false;
         }
-        bool is_connected = EnsureZkConnection();
-        if (!imp_->zk_client_) {
-            LOG_ERROR("Failed to initialize ZooKeeper client: {}", strerror(errno));
-            return false;
-        }
-        if (!is_connected) {
-            LOG_ERROR("Failed to connect ZooKeeper after retries");
+
+        ServiceRegistry* registry = GetOrCreateServiceRegistry();
+        if (!registry) {
+            LOG_ERROR("Failed to create ServiceRegistry");
             return false;
         }
         return true;
-    } catch (const std::exception &e) {
-        LOG_ERROR("Exception in initZkConnHandler : {}", e.what());
+    } catch (const std::exception& e) {
+        LOG_ERROR("Exception in InitZkConnHandler: {}", e.what());
         Cleanup();
         return false;
     }
 }
 
 std::vector<std::string> ZkConnHandler::GetAllServices(const std::string& zk_namespace) {
-    if (!EnsureZkConnection()) {
-        LOG_ERROR("ZooKeeper connection not available");
+    if (!imp_->service_registry_) {
+        LOG_ERROR("ServiceRegistry not available");
         return {};
     }
 
     std::lock_guard<std::mutex> lock(imp_->servers_mtx_);
     try {
-        struct String_vector children = {0};  
-
-        int rc = zoo_get_children(imp_->zk_client_, zk_namespace.c_str(), 0, &children);
-
-        if (rc != ZOK) {
-            LOG_ERROR("Failed to get children: {}", zerror(rc));
-            return {};
-        }
-        
-        std::vector<std::string> servers;
-        
-        for (int i = 0; i < children.count; i++) {
-            std::string node_path = zk_namespace + "/" + children.data[i];
-            char buffer[1024];
-            int buffer_len = sizeof(buffer);
-
-            int ret = zoo_get(imp_->zk_client_, node_path.c_str(), 0, buffer, &buffer_len, nullptr);
-            if (ret == ZOK && buffer_len > 0) {
-                std::string server_ip(buffer, buffer_len);
-                servers.push_back(server_ip);
-            } else {
-                LOG_WARN("Failed to get data for node: {}, error: {}", node_path, zerror(ret));
-            }
-        }
-        deallocate_String_vector(&children);
-
-        return servers;
-    } catch (const std::exception &e) {
-        LOG_ERROR("Exception in getAllServers: {}", e.what());
-        return {};  // 异常时返回空列表
+        return imp_->service_registry_->DiscoverServices(zk_namespace);
+    } catch (const std::exception& e) {
+        LOG_ERROR("Exception in GetAllServices: {}", e.what());
+        return {};
     }
 }
 
 std::string ZkConnHandler::GetServices(const std::string& zk_namespace) {
     UpdateServersFromZk(zk_namespace);
     std::lock_guard<std::mutex> lock(imp_->servers_mtx_);
-    
+
     if (imp_->servers_.empty()) {
         LOG_ERROR("No available servers");
         return {};
     }
-    
+
     std::string server = LoadBalancer::selectServer(imp_->servers_);
     return server;
 }
@@ -128,9 +97,8 @@ bool ZkConnHandler::RegisterService(const std::string& service_name, const std::
             LOG_ERROR("Failed to get or create ServiceRegistry for service registration");
             return false;
         }
-        
+
         if (registry->RegisterService(service_name, service_address)) {
-            // // LOG_INFO("Successfully registered service: {} at {}", service_name, service_address);
             return true;
         } else {
             LOG_ERROR("Failed to register service: {} at {}", service_name, service_address);
@@ -208,37 +176,18 @@ bool ZkConnHandler::HasServiceRegistry() const {
 ServiceRegistry* ZkConnHandler::GetOrCreateServiceRegistry() {
     if (!imp_->service_registry_) {
         std::lock_guard<std::mutex> lock(imp_->mtx_);
-        if (!imp_->service_registry_) { 
-            if (!CreateServiceRegistryIfNeeded_()) {
+        if (!imp_->service_registry_) {
+            try {
+                std::string zk_connection = imp_->zk_host_ + ":" + std::to_string(imp_->zk_port_);
+                imp_->service_registry_ = std::make_unique<ServiceRegistry>(zk_connection);
+            } catch (const std::exception& e) {
+                LOG_ERROR("Exception creating ServiceRegistry: {}", e.what());
+                imp_->service_registry_.reset();
                 return nullptr;
             }
         }
     }
     return imp_->service_registry_.get();
-}
-bool ZkConnHandler::CreateServiceRegistryIfNeeded_() {
-    try {
-        std::string zk_connection = imp_->zk_host_ + ":" + std::to_string(imp_->zk_port_);
-        // // LOG_INFO("Creating ServiceRegistry with connection: {}", zk_connection);
-
-        imp_->service_registry_ = std::make_unique<ServiceRegistry>(zk_connection);
-        
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        
-        if (!imp_->service_registry_->IsConnected()) {
-            LOG_ERROR("Failed to connect ServiceRegistry to ZooKeeper at {}", zk_connection);
-            imp_->service_registry_.reset();
-            return false;
-        }
-        
-        // // LOG_INFO("ServiceRegistry connected successfully to ZooKeeper at {}", zk_connection);
-        return true;
-    
-    } catch (const std::exception& e) {
-        LOG_ERROR("Exception creating ServiceRegistry: {}", e.what());
-        imp_->service_registry_.reset();
-        return false;
-    }
 }
 
 void ZkConnHandler::SetZkHost(const std::string& host) {
@@ -270,22 +219,17 @@ void ZkConnHandler::SetZkNamespace(const std::string& zk_namespace) {
 }
 
 void ZkConnHandler::Cleanup() {
-    static std::atomic<bool> cleanup_done{false};
-    if (cleanup_done.exchange(true)) {
+    if (imp_->cleanup_done_.exchange(true)) {
         return;
     }
-    
+
     imp_->service_registry_.reset();
-    
-    if (imp_->zk_client_) {
-        try {
-            zookeeper_close(imp_->zk_client_);
-            imp_->zk_client_ = nullptr;
-        } catch (...) {
-            imp_->zk_client_ = nullptr;
-        }
-    }
     imp_->running_ = false;
+}
+
+void ZkConnHandler::ResetForTesting() {
+    imp_->cleanup_done_ = false;
+    imp_->service_registry_.reset();
 }
 
 void ZkConnHandler::UpdateServersFromZk(const std::string& zk_namespace) {
@@ -294,94 +238,6 @@ void ZkConnHandler::UpdateServersFromZk(const std::string& zk_namespace) {
         std::lock_guard<std::mutex> lock(imp_->servers_mtx_);
         imp_->servers_ = std::move(new_servers);
     }
-}
-
-void ZkConnHandler::GlobalWatcher_(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx) {
-    if (type == ZOO_SESSION_EVENT) {
-        const char *state_desc;
-        if (state == ZOO_CONNECTED_STATE) {
-            state_desc = "CONNECTED";
-        } else if (state == ZOO_CONNECTING_STATE) {
-            state_desc = "CONNECTING";
-        } else if (state == ZOO_EXPIRED_SESSION_STATE) {
-            state_desc = "EXPIRED";
-        } else if (state == ZOO_AUTH_FAILED_STATE) {
-            state_desc = "AUTH_FAILED";
-        } else if (state == ZOO_ASSOCIATING_STATE) {
-            state_desc = "ASSOCIATING";
-        } else {
-            state_desc = "UNKNOWN";
-        }
-        LOG_DEBUG("ZooKeeper watcher event: {} (type={})", state_desc, type);
-    }
-}
-
-bool ZkConnHandler::EnsureZkConnection() {
-    if (!imp_->zk_client_) {
-        std::string conn_string = imp_->zk_host_ + ":" + std::to_string(imp_->zk_port_); 
-
-        // 初始化ZooKeeper客户端
-        imp_->zk_client_ = zookeeper_init(conn_string.c_str(),  // 连接字符串
-                                        GlobalWatcher_,       // 全局监听器
-                                        30000,               // 30秒超时
-                                        nullptr,             // 客户端ID（新会话）
-                                        this,                // 监听器上下文
-                                        0                    // 标志位
-                                    );
-
-        if (!imp_->zk_client_) {
-            LOG_ERROR("Failed to initialize ZooKeeper client: {} (errno: {})", strerror(errno), errno);
-            return false;
-        }
-    }
-
-    int retry_count = 0;
-    const int max_retries = 50;
-    
-    while (retry_count++ < max_retries) {
-        int state = zoo_state(imp_->zk_client_);
-        const char *state_desc;
-
-        if (state == ZOO_CONNECTED_STATE) {
-            state_desc = "CONNECTED";
-        } else if (state == ZOO_CONNECTING_STATE) {
-            state_desc = "CONNECTING";
-        } else if (state == ZOO_EXPIRED_SESSION_STATE) {
-            state_desc = "EXPIRED";
-        } else if (state == ZOO_AUTH_FAILED_STATE) {
-            state_desc = "AUTH_FAILED";
-        } else if (state == ZOO_ASSOCIATING_STATE) {
-            state_desc = "ASSOCIATING";
-        } else {
-            state_desc = "UNKNOWN";
-            LOG_WARN("Unexpected state value: {} (0x{:x})", state, state);
-            LOG_WARN("Client handle valid: {}", (imp_->zk_client_ != nullptr));
-            
-            if (imp_->zk_client_) {
-                struct Stat stat = {0};
-                int rc = zoo_exists(imp_->zk_client_, "/", 0, &stat);
-                LOG_WARN("zoo_exists test result: {}", rc);
-            }
-        }
-
-        LOG_DEBUG("ZooKeeper state: {} (retry {}/{})", state_desc, retry_count, max_retries);
-
-        if (state == ZOO_CONNECTED_STATE) {
-            return true;
-        } else if (state == ZOO_EXPIRED_SESSION_STATE ||
-                    state == ZOO_AUTH_FAILED_STATE ||
-                    (state != ZOO_CONNECTING_STATE && retry_count > 10)) {
-            LOG_ERROR("Connection failed with state: {} ({})", state, state_desc);
-            Cleanup();
-            return false;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    LOG_ERROR("Failed to connect after {} retries", max_retries);
-    Cleanup();
-    return false;
 }
 
 } // namespace cookrpc

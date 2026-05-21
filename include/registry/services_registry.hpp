@@ -12,7 +12,8 @@ public:
     ~ServiceRegistry();
 
     bool RegisterService(const std::string& service_name, const std::string& service_address);
-    bool IsConnected() const;
+    std::vector<std::string> DiscoverServices(const std::string& service_name) const;
+
 private:
     static void GlobalWatcher_(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
     bool CreateNode_(const std::string& path, const std::string& data, int flags = 0);

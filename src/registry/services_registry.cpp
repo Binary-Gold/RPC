@@ -73,17 +73,16 @@ void ServiceRegistry::GlobalWatcher_(zhandle_t* zh, int type, int state, const c
         if (state == ZOO_CONNECTED_STATE) {
             registry->imp_->is_connect_ = true;
             LOG_INFO("Connected to ZooKeeper");
-        } else if(type == ZOO_EXPIRED_SESSION_STATE) {
+        } else if (state == ZOO_EXPIRED_SESSION_STATE) {
             registry->imp_->is_connect_ = false;
-            LOG_ERROR("ZooKeeper session expried");
-        } else if(type == ZOO_AUTH_FAILED_STATE) {
+            LOG_ERROR("ZooKeeper session expired");
+        } else if (state == ZOO_AUTH_FAILED_STATE) {
             registry->imp_->is_connect_ = false;
             LOG_ERROR("ZooKeeper authentication failed");
         } else {
-            registry->imp_->is_connect_ = false;
-            LOG_WARN("ZooKeeper connection state changed: {}", state);
+            LOG_DEBUG("ZooKeeper state: {} (transient, keeping current flag)", state);
         }
-    } 
+    }
 }
 
 bool ServiceRegistry::EnsurePath_(const std::string& path) {
@@ -163,8 +162,8 @@ bool ServiceRegistry::CreateNode_(const std::string& path, const std::string& da
 }
 
 bool ServiceRegistry::RegisterService(const std::string& service_name, const std::string& service_address) {
-    if (!IsConnected() || !imp_->zk_handle_) {
-        LOG_ERROR("Not connected to ZooKeeper");
+    if (!imp_->zk_handle_) {
+        LOG_ERROR("ZooKeeper handle is null");
         return false;
     }
 
@@ -184,9 +183,29 @@ bool ServiceRegistry::RegisterService(const std::string& service_name, const std
     return true;
 }
 
-bool ServiceRegistry::IsConnected() const {
-    return imp_->is_connect_ && imp_->zk_handle_;
+std::vector<std::string> ServiceRegistry::DiscoverServices(const std::string& service_name) const {
+    if (!imp_->zk_handle_) {
+        return {};
+    }
+
+    std::string service_path = imp_->ROOT_PATH + "/" + service_name;
+    struct String_vector children = {0};
+
+    int rc = zoo_get_children(imp_->zk_handle_, service_path.c_str(), 0, &children);
+    if (rc != ZOK) {
+        LOG_ERROR("Failed to get children for {}: {}", service_path, zerror(rc));
+        return {};
+    }
+
+    std::vector<std::string> result;
+    for (int i = 0; i < children.count; ++i) {
+        result.push_back(children.data[i]);
+    }
+    deallocate_String_vector(&children);
+    return result;
 }
+
+
 
 
 

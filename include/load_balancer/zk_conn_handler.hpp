@@ -1,18 +1,5 @@
 #pragma once
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-#include <zookeeper/zookeeper.h>
-#include <zookeeper/zookeeper_version.h>
-#include <zookeeper/proto.h>
-
-#ifdef __cplusplus
-}
-#endif
-
 #include <vector>
 #include <string>
 #include <memory>
@@ -51,8 +38,8 @@ namespace cookrpc {
         void SetZkNamespace(const std::string& zk_namespace);
 
         void Cleanup();
+        void ResetForTesting();
         void UpdateServersFromZk(const std::string& zk_namespace);
-        bool EnsureZkConnection();
 
         ZkConnHandler(const ZkConnHandler&) = delete;
         ZkConnHandler(const ZkConnHandler&&) = delete;
@@ -60,8 +47,6 @@ namespace cookrpc {
         ZkConnHandler& operator=(ZkConnHandler&&) = delete;
     private:
         ZkConnHandler();
-        static void GlobalWatcher_(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
-        bool CreateServiceRegistryIfNeeded_();
 
         struct Imp;
         std::unique_ptr<Imp> imp_;
