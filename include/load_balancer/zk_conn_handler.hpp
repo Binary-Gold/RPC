@@ -61,6 +61,7 @@ namespace cookrpc {
     private:
         ZkConnHandler();
         static void GlobalWatcher_(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
+        bool CreateServiceRegistryIfNeeded_();
 
         struct Imp;
         std::unique_ptr<Imp> imp_;
