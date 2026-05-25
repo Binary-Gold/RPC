@@ -51,3 +51,7 @@ target_link_libraries(services_registry_test PRIVATE rpc gtest gtest_main)
 # ZkConnHandler integration tests (requires ZooKeeper on localhost:2181)
 add_executable(zk_conn_handler_test test/zk_conn_handler_test.cpp)
 target_link_libraries(zk_conn_handler_test PRIVATE rpc gtest gtest_main)
+
+# ThreadPool unit tests
+add_executable(thread_pool_test test/thread_pool_test.cpp)
+target_link_libraries(thread_pool_test PRIVATE rpc gtest gtest_main)

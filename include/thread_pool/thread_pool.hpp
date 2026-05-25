@@ -75,15 +75,13 @@ public:
     auto Enqueue(TaskPriority priority, F&& f, Args&&... args) -> std::future<typename std::invoke_result<F, Args...>::type> {
         using return_type = typename std::invoke_result<F, Args...>::type;
 
-        auto func = std::make_shared<std::packaged_task<return_type>>(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+        auto func = std::make_shared<std::packaged_task<return_type()>>(
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
         std::future<return_type> res = func->get_future();
 
-
-        TaskWrapper task(priority, func);
-        if (!Enqueue_(task)) {
+        if (!Enqueue_(std::function<void()>([func]() { (*func)(); }), priority)) {
             return std::future<return_type>{};
         }
-
         return res;
     }
 
@@ -105,7 +103,7 @@ public:
 private:
     void WorkerThread_();
     void AdjustThreadCount_();
-    bool Enqueue_(TaskWrapper& task);
+    bool Enqueue_(std::function<void()>&& func, TaskPriority priority);
 
     struct Imp;
     std::unique_ptr<Imp> imp_;
