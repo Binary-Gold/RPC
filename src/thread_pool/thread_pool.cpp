@@ -14,7 +14,6 @@ namespace meeting_ctrl {
 struct ThreadPool::Imp {
     std::vector<std::thread> workers_;
     std::atomic<size_t> current_threads_{0};
-    std::vector<std::chrono::steady_clock::time_point> thread_last_active_;
 
     std::priority_queue<TaskWrapper> tasks_;
 
@@ -23,7 +22,6 @@ struct ThreadPool::Imp {
     mutable std::mutex queue_mutex_;
     std::condition_variable condition_;
     std::condition_variable not_full_condition_;
-    bool stop_{false};
 
     std::atomic<ThreadPoolState> state_{ThreadPoolState::RUNNING};
 
@@ -40,10 +38,8 @@ ThreadPool::ThreadPool(size_t threads) : imp_(std::make_unique<Imp>()) {
     imp_->config_.max_queue_size = 0; // 无限制
 
     imp_->workers_.reserve(threads);
-    imp_->thread_last_active_.reserve(threads);
     for (size_t i = 0; i <threads; ++i) {
         imp_->workers_.emplace_back(&ThreadPool::WorkerThread_, this);
-        imp_->thread_last_active_[i] = std::chrono::steady_clock::now();
     }
     imp_->current_threads_ = threads;
 }
@@ -51,11 +47,9 @@ ThreadPool::ThreadPool(size_t threads) : imp_(std::make_unique<Imp>()) {
 ThreadPool::ThreadPool(const ThreadPoolStruct& config) : imp_(std::make_unique<Imp>()) {
     imp_->config_ = config;
     imp_->workers_.reserve(imp_->config_.max_threads);
-    imp_->thread_last_active_.reserve(imp_->config_.max_threads);
 
     for (size_t i = 0; i < imp_->config_.core_threads; ++i) {
         imp_->workers_.emplace_back(&ThreadPool::WorkerThread_, this);
-        imp_->thread_last_active_[i] = std::chrono::steady_clock::now();
     }
     imp_->current_threads_ = imp_->config_.core_threads;
 }
@@ -103,9 +97,11 @@ size_t ThreadPool::QueueSize() const noexcept {
 
 bool ThreadPool::Shutdown(std::chrono::milliseconds wait_timeout_ms) {
     ThreadPoolState expected = ThreadPoolState::RUNNING;
-
-    if(!imp_->state_.compare_exchange_strong(expected, ThreadPoolState::SHUTTING_DOWN)) {
-        return imp_->state_ == ThreadPoolState::STOPPED;
+    if (!imp_->state_.compare_exchange_strong(expected, ThreadPoolState::SHUTTING_DOWN)) {
+        expected = ThreadPoolState::PAUSED;
+        if (!imp_->state_.compare_exchange_strong(expected, ThreadPoolState::SHUTTING_DOWN)) {
+            return true;  // already SHUTTING_DOWN or STOPPED
+        }
     }
     
     imp_->condition_.notify_all();
@@ -121,7 +117,6 @@ bool ThreadPool::Shutdown(std::chrono::milliseconds wait_timeout_ms) {
         }
         
         imp_->state_ = ThreadPoolState::STOPPED;
-        imp_->stop_ = true;
     }
     
     imp_->condition_.notify_all();
@@ -139,7 +134,6 @@ void ThreadPool::StopNow() {
         {
         std::unique_lock<std::mutex> lock(imp_->queue_mutex_);
         imp_->state_ = ThreadPoolState::STOPPED;
-        imp_->stop_ = true;
         
         while(!imp_->tasks_.empty()) {
             imp_->tasks_.pop();
@@ -173,9 +167,9 @@ void ThreadPool::WorkerThread_() {
             std::unique_lock<std::mutex> lock(imp_->queue_mutex_);
             auto wait_time = imp_->config_.keep_alive_time;
             bool has_task = imp_->condition_.wait_for(lock, wait_time, [this](){
-                return imp_->stop_ || 
+                return imp_->state_ == ThreadPoolState::STOPPED || 
                         (imp_->state_ == ThreadPoolState::RUNNING && !imp_->tasks_.empty()) ||
-                        (imp_->state_ == ThreadPoolState::SHUTTING_DOWN && !imp_->tasks_.empty());
+                        imp_->state_ == ThreadPoolState::SHUTTING_DOWN;
             });
             if (!has_task && imp_->current_threads_ > imp_->config_.core_threads) {
                 auto now = std::chrono::steady_clock::now();
@@ -187,9 +181,12 @@ void ThreadPool::WorkerThread_() {
                     return;
                 }
             }
-            if ((imp_->stop_ || imp_->state_ == ThreadPoolState::STOPPED) && imp_->tasks_.empty()) {
+            if (imp_->state_ == ThreadPoolState::STOPPED || 
+                (imp_->state_ == ThreadPoolState::SHUTTING_DOWN && imp_->tasks_.empty())) {
+                imp_->current_threads_--;
                 return;
             }
+
             if (imp_->state_ == ThreadPoolState::PAUSED) {
                 // todo 改成信号触发
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -251,12 +248,8 @@ void ThreadPool::WorkerThread_() {
 
 void ThreadPool::AdjustThreadCount_() {
     if(imp_->current_threads_ < imp_->config_.max_threads && imp_->tasks_.size() > imp_->active_threads_) {
-        size_t new_thread_id = imp_->current_threads_++;
-        if(new_thread_id < imp_->thread_last_active_.size()) {
-            imp_->thread_last_active_[new_thread_id] = std::chrono::steady_clock::now();
-        }
-        
         try {
+            imp_->current_threads_++;
             imp_->workers_.emplace_back(&ThreadPool::WorkerThread_, this); 
         } catch(const std::exception& e) {
             imp_->current_threads_--;
@@ -271,10 +264,10 @@ bool ThreadPool::Enqueue_(std::function<void()>&& func, TaskPriority priority) {
         if (imp_->config_.max_queue_size > 0) {
             // 队列满时等待
             imp_->not_full_condition_.wait(lock, [this](){
-                return imp_->stop_ || imp_->tasks_.size() < imp_->config_.max_queue_size;
+                return imp_->state_ != ThreadPoolState::RUNNING || imp_->tasks_.size() < imp_->config_.max_queue_size;
             });
         }
-        if (imp_->stop_) {
+        if (imp_->state_ != ThreadPoolState::RUNNING ) {
             return false;
         }
         imp_->tasks_.emplace(std::move(func), priority);
