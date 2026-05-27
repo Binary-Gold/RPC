@@ -65,3 +65,7 @@ target_link_libraries(thread_pool_test PRIVATE rpc gtest gtest_main)
 # ZstdCompress unit tests
 add_executable(zstd_compress_test test/zstd_compress_test.cpp)
 target_link_libraries(zstd_compress_test PRIVATE rpc gtest gtest_main)
+
+# AesEncrypt unit tests
+add_executable(aes_encrypt_test test/aes_encrypt_test.cpp)
+target_link_libraries(aes_encrypt_test PRIVATE rpc gtest gtest_main)
