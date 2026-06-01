@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-
 #include <google/protobuf/message.h>
 
 #include "log_manager.hpp"
