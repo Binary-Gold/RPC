@@ -13,6 +13,12 @@ set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "Use external fmt library" FORCE)
 add_subdirectory(third_party/spdlog)
 add_subdirectory(third_party/json)
 
+# Bundled protobuf
+set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "" FORCE)
+set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/protobuf)
+
 # System-installed ZooKeeper C client
 find_path(ZOOKEEPER_INCLUDE_DIR zookeeper/zookeeper.h PATHS /usr/include NO_DEFAULT_PATH)
 find_library(ZOOKEEPER_LIBRARY libzookeeper_mt.a PATHS /usr/lib/x86_64-linux-gnu NO_DEFAULT_PATH)
@@ -25,8 +31,21 @@ find_library(ZSTD_LIBRARY libzstd.a PATHS /usr/lib/x86_64-linux-gnu NO_DEFAULT_P
 add_library(zstd STATIC IMPORTED)
 set_target_properties(zstd PROPERTIES IMPORTED_LOCATION ${ZSTD_LIBRARY})
 
+# Protobuf code generation
+set(PROTO_DIR "${CMAKE_SOURCE_DIR}/include/proto")
+add_custom_command(
+    OUTPUT ${PROTO_DIR}/message.pb.cc ${PROTO_DIR}/message.pb.h
+    COMMAND ${CMAKE_BINARY_DIR}/third_party/protobuf/protoc-36.0.0
+            --cpp_out="${PROTO_DIR}"
+            --proto_path="${PROTO_DIR}"
+            ${PROTO_DIR}/message.proto
+    DEPENDS ${PROTO_DIR}/message.proto
+    COMMENT "Generating protobuf C++ from message.proto"
+)
+
 # Project library
 file(GLOB_RECURSE RPC_SOURCES CONFIGURE_DEPENDS src/*.cpp)
+list(APPEND RPC_SOURCES ${PROTO_DIR}/message.pb.cc)
 add_library(rpc STATIC ${RPC_SOURCES})
 target_include_directories(rpc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -34,6 +53,7 @@ target_include_directories(rpc PUBLIC
 target_link_libraries(rpc PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    libprotobuf
     zookeeper_mt
     zstd
     pthread
@@ -69,3 +89,7 @@ target_link_libraries(zstd_compress_test PRIVATE rpc gtest gtest_main)
 # AesEncrypt unit tests
 add_executable(aes_encrypt_test test/aes_encrypt_test.cpp)
 target_link_libraries(aes_encrypt_test PRIVATE rpc gtest gtest_main)
+
+# ProtobufSerializer unit tests
+add_executable(protobuf_serializer_test test/protobuf_serializer_test.cpp)
+target_link_libraries(protobuf_serializer_test PRIVATE rpc gtest gtest_main)
