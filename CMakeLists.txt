@@ -93,3 +93,7 @@ target_link_libraries(aes_encrypt_test PRIVATE rpc gtest gtest_main)
 # ProtobufSerializer unit tests
 add_executable(protobuf_serializer_test test/protobuf_serializer_test.cpp)
 target_link_libraries(protobuf_serializer_test PRIVATE rpc gtest gtest_main)
+
+# ServiceManager unit tests
+add_executable(service_manager_test test/service_manager_test.cpp)
+target_link_libraries(service_manager_test PRIVATE rpc gtest gtest_main)
