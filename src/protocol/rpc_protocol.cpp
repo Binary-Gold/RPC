@@ -4,6 +4,8 @@
 
 namespace cookrpc {
 
+RpcHeader::RpcHeader(const std::string& data, uint32_t id) : message_length(data.size()), sequence_id(id) {}
+
 bool RpcRequest::Serialize(std::string& out) const {
     minirpc::RpcRequestProto env;
     env.set_service_name(service_name_);
