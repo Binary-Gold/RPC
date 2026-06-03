@@ -6,11 +6,13 @@ namespace cookrpc
 {
     struct RpcHeader
     {
-        uint32_t magic = 0x12345678; // 魔数
-        uint32_t message_length; // 消息体长度
-        uint32_t sequence_id;    // 序列号
+        static constexpr uint32_t MAGIC = 0x12345678;
 
-        RpcHeader(const std::string& data, uint32_t id); 
+        uint32_t magic = MAGIC;
+        uint32_t message_length;
+        uint32_t sequence_id;
+
+        RpcHeader() = default;
     };
     class RpcMessage
     {

@@ -58,9 +58,8 @@ namespace cookrpc
     private:
         static const size_t MAX_BUFFER_SIZE = 65536;
 
-        void HandleMessage(const RpcRequest &request);
-        void HandleError();
-        bool SendInBuffer();
+        void HandleMessage_(const RpcRequest &request);
+        void HandleError_();
 
         struct Imp;
         std::unique_ptr<Imp> imp_;

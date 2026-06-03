@@ -66,7 +66,7 @@ Connection::Connection(int fd)
 
 Connection::~Connection() {
     try {
-        Close();
+        HandleError_();
     } catch (const std::exception& e) {
         std::cerr << "Exception in Connection destructor: " << e.what() << std::endl;
     } catch (...) {
@@ -121,17 +121,89 @@ bool Connection::Read() {
     }
 }
 
-bool Connection::Write(const std::string& data)
-{}
+bool Connection::Write(const std::string& data) {
+    // 检查连接状态
+    if (imp_->state_ != State::CONNECTED) {
+        LOG_ERROR("Connection is not in CONNECTED state for write, fd: {}, state: {}", 
+                    imp_->fd_, static_cast<int>(imp_->state_));
+        return false;
+    }
 
-bool Connection::Write(const RpcResponse& response)
-{}
+    if (data.empty()) {
+        LOG_ERROR("write data is empty, fd: {}", imp_->fd_);
+        return false;
+    }
 
-void Connection::Close()
-{}
+    // 添加到写缓冲
+    imp_->write_buffer_.insert(imp_->write_buffer_.end(), data.begin(), data.end());
 
-bool Connection::IsValid() const
-{}
+    // 尝试发送数据
+    while (!imp_->write_buffer_.empty()) {
+        ssize_t n = write(imp_->fd_, imp_->write_buffer_.data(), imp_->write_buffer_.size());
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }
+            LOG_ERROR("write error, fd: {}, errno: {}", imp_->fd_, errno);
+            imp_->state_ = State::DISCONNECTED;
+            return false;
+        }
+        imp_->write_buffer_.erase(imp_->write_buffer_.begin(), imp_->write_buffer_.begin() + n);
+    }
+    return true;
+}
+
+bool Connection::Write(const RpcResponse& response) {
+    // 1. Serialize
+    std::string body;
+    if (!response.Serialize(body)) {
+        LOG_ERROR("serialize response failed");
+        return false;
+    }
+
+    // 2. Compress
+    std::string compressed;
+    if (!ZstdCompress::getInstance().CompressString(body, compressed)) {
+        LOG_ERROR("compress response failed");
+        return false;
+    }
+
+    // 3. Encrypt
+    std::string encrypted;
+    if (!AesEncrypt::getInstance().Encrypt(compressed, encrypted)) {
+        LOG_ERROR("encrypt response failed");
+        return false;
+    }
+
+    // 4. Prepend header
+    RpcHeader header;
+    header.magic = RpcHeader::MAGIC;
+    header.message_length = encrypted.size();
+    header.sequence_id = response.getSequenceId();
+
+    std::string frame;
+    frame.resize(sizeof(header) + encrypted.size());
+    std::memcpy(&frame[0], &header, sizeof(header));
+    std::memcpy(&frame[sizeof(header)], encrypted.data(), encrypted.size());
+
+    return Write(frame);
+}
+
+void Connection::Close() {
+    if (imp_->fd_ >= 0) {
+        if (imp_->state_ == State::CONNECTED) {
+            imp_->state_ = State::DISCONNECTING;
+        }
+        
+        ::close(imp_->fd_);
+        imp_->fd_ = -1;
+        imp_->state_ = State::DISCONNECTED;
+    }
+}
+
+bool Connection::IsValid() const {
+    return imp_->fd_ > 0 && imp_->state_ == State::CONNECTED;
+}
 
 bool Connection::ReadWithTimeout(int timeout_ms) {
     while (true){
@@ -171,103 +243,112 @@ bool Connection::ReadWithTimeout(int timeout_ms) {
     }
 }
 
-int Connection::GetFd() const
-{}
+int Connection::GetFd() const {
+    return imp_->fd_;
+}
 
-const std::string& Connection::GetPeerAddress() const
-{}
+const std::string& Connection::GetPeerAddress() const {
+    return imp_->peer_addr_;
+}
 
-uint16_t Connection::GetPeerPort() const
-{}
+uint16_t Connection::GetPeerPort() const {
+    return imp_->peer_port_;
+}
 
-Connection::State Connection::GetState() const
-{}
+Connection::State Connection::GetState() const {
+    return imp_->state_;
+}
 
-std::string Connection::GetReadBufferData()
-{}
+std::string Connection::GetReadBufferData() {
+    return std::string(imp_->read_buffer_.begin(), imp_->read_buffer_.end());
+}
 
-void Connection::SetMessageCallback(const MessageCallback& cb)
-{}
+void Connection::SetMessageCallback(const MessageCallback& cb) {
+    imp_->message_callback_ = cb;
+}
 
-void Connection::SetCloseCallback(const CloseCallback& cb)
-{}
+void Connection::SetCloseCallback(const CloseCallback& cb) {
+    imp_->close_callback_ = cb;
+}
 
 bool Connection::ProcessMessage() {
-    if (imp_->read_buffer_.size() >= sizeof(RpcHeader)) {
-        try
-        {
-            // vector<char> 转换为 string
-            std::string encrypted_data(imp_->read_buffer_.begin(), imp_->read_buffer_.end());
+    while (imp_->read_buffer_.size() >= sizeof(RpcHeader)) {
+        // 1. 读明文头 → 校验魔数
+        RpcHeader header;
+        std::memcpy(&header, imp_->read_buffer_.data(), sizeof(header));
 
-            // 解密数据
-            std::string decrypted_data;
-
-            if (encrypted_data.empty()) {
-                LOG_ERROR("Encrypted data is empty, fd: {}", imp_->fd_);
-                return false;
-            }
-
-            if (!AesEncrypt::getInstance().Decrypt(encrypted_data, decrypted_data)) {
-                LOG_ERROR("Failed to decrypt data, encrypted size: {}, fd: {}",
-                            encrypted_data.size(), imp_->fd_);
-                return false;
-            }
-
-            // 检查解密后的数据
-            if (decrypted_data.empty())
-            {
-                LOG_ERROR("Decrypted data is empty, fd: {}", imp_->fd_);
-                return false;
-            }
-
-            std::string decompressed_data;
-            if (!ZstdCompress::getInstance().DecompressString(decrypted_data, decompressed_data))
-            {
-                LOG_ERROR("Failed to decompress data, decrypted size: {}, fd: {}", 
-                            decrypted_data.size(), imp_->fd_);
-                return false;
-            }
-
-            // 检查数据长度是否足够包含头部
-            if (decompressed_data.size() < sizeof(RpcHeader))
-            {
-                LOG_DEBUG("Waiting for more data, current size: {}, need: {}",
-                            decompressed_data.size(), sizeof(RpcHeader));
-                return true; // 数据不完整，等待更多数据
-            }
-
-            RpcRequest request;
-            if (!request.Deserialize(decompressed_data))
-            {
-                LOG_ERROR("Failed to deserialize request body, decompressed size: {}, fd: {}", 
-                            decompressed_data.size(), imp_->fd_);
-                return false;
-            }
-
-            // // LOG_INFO("ProcessMessage: successfully deserialized request, fd: {}", fd_);
-
-            // 处理消息
-            HandleMessage(request);
-
-            // 清理已处理的数据
-            read_buffer_.clear(); // 因为我们已经处理完整个加密数据
-        }
-        catch (const std::exception &e)
-        {
-            LOG_ERROR("Error in ProcessMessage: {}, fd: {}", e.what(), fd_);
+        if (header.magic != RpcHeader::MAGIC) {
+            LOG_ERROR("Magic number mismatch: {:#x}, fd: {}", header.magic, imp_->fd_);
+            Close();
             return false;
         }
+
+        size_t frame_size = sizeof(header) + header.message_length;
+        if (imp_->read_buffer_.size() < frame_size) {
+            break;  // 半包，等下次 Read 补全
+        }
+
+        // 2. 切出这一帧的加密体
+        std::string encrypted_body(
+            imp_->read_buffer_.begin() + sizeof(header),
+            imp_->read_buffer_.begin() + frame_size);
+
+        // 3. 解密 → 解压 → 反序列化
+        std::string decrypted;
+        if (!AesEncrypt::getInstance().Decrypt(encrypted_body, decrypted)) {
+            LOG_ERROR("Failed to decrypt, fd: {}", imp_->fd_);
+            imp_->read_buffer_.erase(imp_->read_buffer_.begin(),
+                                     imp_->read_buffer_.begin() + frame_size);
+            return false;
+        }
+
+        std::string decompressed;
+        if (!ZstdCompress::getInstance().DecompressString(decrypted, decompressed)) {
+            LOG_ERROR("Failed to decompress, fd: {}", imp_->fd_);
+            imp_->read_buffer_.erase(imp_->read_buffer_.begin(),
+                                     imp_->read_buffer_.begin() + frame_size);
+            return false;
+        }
+
+        RpcRequest request;
+        request.setSequenceId(header.sequence_id);
+        if (!request.Deserialize(decompressed)) {
+            LOG_ERROR("Failed to deserialize, fd: {}", imp_->fd_);
+            imp_->read_buffer_.erase(imp_->read_buffer_.begin(),
+                                     imp_->read_buffer_.begin() + frame_size);
+            return false;
+        }
+
+        // 4. 处理完 → 从这个帧切掉
+        imp_->read_buffer_.erase(imp_->read_buffer_.begin(),
+                                 imp_->read_buffer_.begin() + frame_size);
+
+        HandleMessage_(request);
     }
     return true;
 }
 
-void Connection::HandleMessage(const RpcRequest& request)
-{}
+void Connection::HandleMessage_(const RpcRequest& request) {
+    if (!imp_->message_callback_) {
+        LOG_WARN("No message callback set, fd: {}", imp_->fd_);
+        return;
+    }
 
-void Connection::HandleError()
-{}
+    try {
+        imp_->message_callback_(shared_from_this(), request);
+    } catch (const std::exception &e) {
+        LOG_ERROR("Message callback failed: {}, service: {}, method: {}, fd: {}",
+                    e.what(), request.getServiceName(), request.getMethodName(), imp_->fd_);
+    } catch (...) {
+        LOG_ERROR("Unknown exception in message callback, fd: {}", imp_->fd_);
+    }
+}
 
-bool Connection::SendInBuffer()
-{}
+void Connection::HandleError_() {
+    if (imp_->close_callback_) {
+        imp_->close_callback_(shared_from_this());
+    }
+    Close();
+}
 
 } // namespace cookrpc

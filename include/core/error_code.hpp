@@ -99,7 +99,6 @@ namespace cookrpc
             return it != error_messages.end() ? it->second : "Unknown error code";
         }
     };
-/home/kaanh/Nutstore Files/日志/rpc-tutorial-main/rpc_src/core/error_code.h
     // 错误结果类
     class ErrorResult
     {
