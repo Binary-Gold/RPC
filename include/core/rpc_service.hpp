@@ -19,10 +19,8 @@ namespace cookrpc
                            const std::string &args,
                            std::string &result) override
         {
-            if (method_name == "Echo")
-            {
-                try
-                {
+            if (method_name == "Echo") {
+                try {
                     nlohmann::json request = nlohmann::json::parse(args);
                     
                     // 创建JSON响应
@@ -34,8 +32,7 @@ namespace cookrpc
                     result = response.dump();
                     return true;
                 }
-                catch (const std::exception &e)
-                {
+                catch (const std::exception &e) {
                     LOG_ERROR("Failed to process Echo request: {}", e.what());
                     
                     // 返回错误的JSON响应

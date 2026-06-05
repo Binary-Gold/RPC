@@ -49,8 +49,7 @@ Connection::Connection(int fd)
     socklen_t len = sizeof(addr);
     memset(&addr, 0, sizeof(addr));
 
-    if (getpeername(imp_->fd_, (struct sockaddr *)&addr, &len) == 0)
-    {
+    if (getpeername(imp_->fd_, (struct sockaddr *)&addr, &len) == 0) {
         char ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
         imp_->peer_addr_ = ip;
@@ -89,8 +88,7 @@ bool Connection::Read() {
     while (true) {
         ssize_t n = read(imp_->fd_, buf, sizeof(buf));
         if (n < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // 在边缘触发模式下，这表示所有数据都已读取完毕
                 LOG_DEBUG("No more data available now, fd: {} (read {} bytes total)", 
                             fd_, has_read_data ? "some" : "no");
@@ -201,12 +199,8 @@ void Connection::Close() {
     }
 }
 
-bool Connection::IsValid() const {
-    return imp_->fd_ > 0 && imp_->state_ == State::CONNECTED;
-}
-
 bool Connection::ReadWithTimeout(int timeout_ms) {
-    while (true){
+    while (true) {
         fd_set read_set;
         struct timeval timeout;
         timeout.tv_sec = timeout_ms / 1000;
@@ -218,8 +212,7 @@ bool Connection::ReadWithTimeout(int timeout_ms) {
 
         int ret = select(imp_->fd_ + 1, &read_set, nullptr, nullptr, &timeout);
         if (ret < 0) {
-            if (errno == EINTR)
-            {
+            if (errno == EINTR) {
                 // 如果是被信号中断，则继续
                 continue;
             }
@@ -272,6 +265,7 @@ void Connection::SetCloseCallback(const CloseCallback& cb) {
 }
 
 bool Connection::ProcessMessage() {
+    // 循环处理
     while (imp_->read_buffer_.size() >= sizeof(RpcHeader)) {
         // 1. 读明文头 → 校验魔数
         RpcHeader header;

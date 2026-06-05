@@ -72,8 +72,7 @@ int CreateSocket::Accept() {
     // 接受新连接
     int client_fd = ::accept(imp_->fd_, (struct sockaddr *)&client_addr, &client_len);
     if (client_fd < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return -1; // 非阻塞模式下正常返回
         }
         LOG_ERROR("accept error, errno: {}, error: {}", errno, strerror(errno));

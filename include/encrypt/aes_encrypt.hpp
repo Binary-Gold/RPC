@@ -8,8 +8,7 @@ namespace cookrpc
     class AesEncrypt
     {
     public:
-        static AesEncrypt &getInstance()
-        {
+        static AesEncrypt &getInstance() {
             static AesEncrypt instance;
             return instance;
         }

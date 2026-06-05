@@ -14,21 +14,18 @@ using namespace cookrpc;
 // ============================================================
 // RoundLB
 // ============================================================
-TEST(RoundLB, EmptyInstancesReturnsEmpty)
-{
+TEST(RoundLB, EmptyInstancesReturnsEmpty) {
     RoundLB lb;
     EXPECT_EQ(lb.select({}), "");
 }
 
-TEST(RoundLB, SingleInstanceAlwaysReturnsIt)
-{
+TEST(RoundLB, SingleInstanceAlwaysReturnsIt) {
     RoundLB lb;
     for (int i = 0; i < 5; ++i)
         EXPECT_EQ(lb.select({"A"}), "A");
 }
 
-TEST(RoundLB, TwoInstancesAlternate)
-{
+TEST(RoundLB, TwoInstancesAlternate) {
     RoundLB lb;
     EXPECT_EQ(lb.select({"A", "B"}), "A");
     EXPECT_EQ(lb.select({"A", "B"}), "B");
@@ -36,8 +33,7 @@ TEST(RoundLB, TwoInstancesAlternate)
     EXPECT_EQ(lb.select({"A", "B"}), "B");
 }
 
-TEST(RoundLB, WrapsAround)
-{
+TEST(RoundLB, WrapsAround) {
     RoundLB lb;
     std::vector<std::string> s = {"X", "Y", "Z"};
     // first cycle
@@ -49,8 +45,7 @@ TEST(RoundLB, WrapsAround)
     EXPECT_EQ(lb.select(s), "Y");
 }
 
-TEST(RoundLB, ThreadSafetyEachCallUnique)
-{
+TEST(RoundLB, ThreadSafetyEachCallUnique) {
     RoundLB lb;
     constexpr int N = 1000;
     std::atomic<int> counts[3]{};
@@ -78,21 +73,18 @@ TEST(RoundLB, ThreadSafetyEachCallUnique)
 // ============================================================
 // RandomLB
 // ============================================================
-TEST(RandomLB, EmptyInstancesReturnsEmpty)
-{
+TEST(RandomLB, EmptyInstancesReturnsEmpty) {
     RandomLB lb;
     EXPECT_EQ(lb.select({}), "");
 }
 
-TEST(RandomLB, SingleInstanceAlwaysReturnsIt)
-{
+TEST(RandomLB, SingleInstanceAlwaysReturnsIt) {
     RandomLB lb;
     for (int i = 0; i < 10; ++i)
         EXPECT_EQ(lb.select({"Solo"}), "Solo");
 }
 
-TEST(RandomLB, AlwaysReturnsValidInstance)
-{
+TEST(RandomLB, AlwaysReturnsValidInstance) {
     RandomLB lb;
     std::vector<std::string> s = {"X", "Y", "Z"};
     for (int i = 0; i < 100; ++i) {
@@ -101,8 +93,7 @@ TEST(RandomLB, AlwaysReturnsValidInstance)
     }
 }
 
-TEST(RandomLB, CoversAllChoicesOverManyCalls)
-{
+TEST(RandomLB, CoversAllChoicesOverManyCalls) {
     RandomLB lb;
     std::vector<std::string> s = {"A", "B", "C", "D"};
     std::set<std::string> seen;
@@ -114,21 +105,18 @@ TEST(RandomLB, CoversAllChoicesOverManyCalls)
 // ============================================================
 // WeightedLB
 // ============================================================
-TEST(WeightedLB, EmptyInstancesReturnsEmpty)
-{
+TEST(WeightedLB, EmptyInstancesReturnsEmpty) {
     WeightedLB lb;
     EXPECT_EQ(lb.select({}), "");
 }
 
-TEST(WeightedLB, SingleInstanceAlwaysReturnsIt)
-{
+TEST(WeightedLB, SingleInstanceAlwaysReturnsIt) {
     WeightedLB lb;
     for (int i = 0; i < 5; ++i)
         EXPECT_EQ(lb.select({"Only"}), "Only");
 }
 
-TEST(WeightedLB, FallsBackToFirstWhenTotalZero)
-{
+TEST(WeightedLB, FallsBackToFirstWhenTotalZero) {
     // All weights would be 0 if name_weight_ overrides to 0 — not applicable
     // with default (i+1). Just sanity-check valid output.
     WeightedLB lb;
@@ -136,8 +124,7 @@ TEST(WeightedLB, FallsBackToFirstWhenTotalZero)
     ASSERT_TRUE(r == "A" || r == "B");
 }
 
-TEST(WeightedLB, ReturnsValidInstance)
-{
+TEST(WeightedLB, ReturnsValidInstance) {
     WeightedLB lb;
     std::vector<std::string> s = {"X", "Y", "Z"};
     for (int i = 0; i < 100; ++i) {

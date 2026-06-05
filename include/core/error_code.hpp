@@ -59,8 +59,7 @@ namespace cookrpc
     class Error
     {
     public:
-        static std::string getErrorMessage(ErrorCode code)
-        {
+        static std::string getErrorMessage(ErrorCode code) {
             static const std::unordered_map<ErrorCode, std::string> error_messages = {
                 {ErrorCode::SUCCESS, "Success"},
                 {ErrorCode::SYSTEM_ERROR, "System error"},
@@ -114,8 +113,7 @@ namespace cookrpc
 
         std::string toString() const
         {
-            if (message_.empty())
-            {
+            if (message_.empty()) {
                 return Error::getErrorMessage(code_);
             }
             return Error::getErrorMessage(code_) + ": " + message_;

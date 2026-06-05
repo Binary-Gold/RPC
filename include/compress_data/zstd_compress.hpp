@@ -19,8 +19,7 @@ namespace cookrpc
     class ZstdCompress
     {
     public:
-        static ZstdCompress &getInstance()
-        {
+        static ZstdCompress &getInstance() {
             static ZstdCompress instance;
             return instance;
         }

@@ -166,7 +166,7 @@ void ThreadPool::WorkerThread_() {
         {
             std::unique_lock<std::mutex> lock(imp_->queue_mutex_);
             auto wait_time = imp_->config_.keep_alive_time;
-            bool has_task = imp_->condition_.wait_for(lock, wait_time, [this](){
+            bool has_task = imp_->condition_.wait_for(lock, wait_time, [this]() {
                 return imp_->state_ == ThreadPoolState::STOPPED || 
                         (imp_->state_ == ThreadPoolState::RUNNING && !imp_->tasks_.empty()) ||
                         imp_->state_ == ThreadPoolState::SHUTTING_DOWN;
@@ -263,7 +263,7 @@ bool ThreadPool::Enqueue_(std::function<void()>&& func, TaskPriority priority) {
         std::unique_lock<std::mutex> lock(imp_->queue_mutex_);
         if (imp_->config_.max_queue_size > 0) {
             // 队列满时等待
-            imp_->not_full_condition_.wait(lock, [this](){
+            imp_->not_full_condition_.wait(lock, [this]() {
                 return imp_->state_ != ThreadPoolState::RUNNING || imp_->tasks_.size() < imp_->config_.max_queue_size;
             });
         }

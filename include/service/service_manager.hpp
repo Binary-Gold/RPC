@@ -14,17 +14,14 @@ namespace cookrpc
     class ServiceManager
     {
     public:
-        static ServiceManager &GetInstance()
-        {
+        static ServiceManager &GetInstance() {
             static ServiceManager instance;
             return instance;
         }
 
         // 注册服务
-        bool RegisterService(std::shared_ptr<Service> service)
-        {
-            if (!service)
-            {
+        bool RegisterService(std::shared_ptr<Service> service) {
+            if (!service) {
                 LOG_ERROR("register null service");
                 return false;
             }
@@ -32,8 +29,7 @@ namespace cookrpc
             std::lock_guard<std::mutex> lock(mutex_);
             std::string service_name = service->GetServiceName();
 
-            if (services_.find(service_name) != services_.end())
-            {
+            if (services_.find(service_name) != services_.end()) {
                 LOG_WARN("service already exists: {}", service_name);
                 return false;
             }
@@ -44,12 +40,10 @@ namespace cookrpc
         }
 
         // 获取服务
-        std::shared_ptr<Service> GetService(const std::string &service_name)
-        {
+        std::shared_ptr<Service> GetService(const std::string &service_name) {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = services_.find(service_name);
-            if (it != services_.end())
-            {
+            if (it != services_.end()) {
                 return it->second;
             }
             LOG_WARN("service not found get service: {}", service_name);
@@ -60,8 +54,7 @@ namespace cookrpc
         std::future<bool> HandleRpcRequestAsync(const std::string &service_name,
                                                const std::string &method_name,
                                                const std::string &args,
-                                               std::shared_ptr<std::string> result)
-        {
+                                               std::shared_ptr<std::string> result) {
             if (!meeting_ctrl::ThreadPoolSingleton::Exists()) {
                 meeting_ctrl::ThreadPoolSingleton::Init();
             }
@@ -79,8 +72,7 @@ namespace cookrpc
         bool HandleRpcRequest(const std::string &service_name,
                               const std::string &method_name,
                               const std::string &args,
-                              std::string &result)
-        {
+                              std::string &result) {
             return HandleRpcRequestSync(service_name, method_name, args, result);
         }
 
@@ -102,17 +94,14 @@ namespace cookrpc
         bool HandleRpcRequestSync(const std::string &service_name,
                                  const std::string &method_name,
                                  const std::string &args,
-                                 std::string &result)
-        {
+                                 std::string &result) {
             auto service = GetService(service_name);
-            if (!service)
-            {
+            if (!service) {
                 LOG_ERROR("service not found handle rpc request: {}", service_name);
                 return false;
             }
 
-            if (!service->HandleRequest(method_name, args, result))
-            {
+            if (!service->HandleRequest(method_name, args, result)) {
                 LOG_ERROR("handle request failed: service={}, method={}",
                           service_name, method_name);
                 return false;

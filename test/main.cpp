@@ -17,8 +17,7 @@ int main() {
     };
 
     // 3. 多次选择服务器
-    for (int i = 0; i < 10; ++i)
-    {
+    for (int i = 0; i < 10; ++i) {
         std::string server = cookrpc::LoadBalancer::selectServer(servers);
         std::cout << "Request " << i << ": " << server << std::endl;
     }

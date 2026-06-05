@@ -12,23 +12,19 @@
 namespace cookrpc {
     namespace  {
         struct BalancerFactory {
-            static std::shared_ptr<LoadBalancer> createRandom()
-            {
+            static std::shared_ptr<LoadBalancer> createRandom() {
                 return std::make_shared<RandomLB>();
             }
 
-            static std::shared_ptr<LoadBalancer> createRoundRobin()
-            {
+            static std::shared_ptr<LoadBalancer> createRoundRobin() {
                 return std::make_shared<RoundLB>();
             }
 
-            static std::shared_ptr<LoadBalancer> createWeighted()
-            {
+            static std::shared_ptr<LoadBalancer> createWeighted() {
                 return std::make_shared<WeightedLB>();
             }
 
-            static const std::unordered_map<std::string, std::function<std::shared_ptr<LoadBalancer>()>> &getMap()
-            {
+            static const std::unordered_map<std::string, std::function<std::shared_ptr<LoadBalancer>()>> &getMap() {
                 static const std::unordered_map<std::string,
                                                 std::function<std::shared_ptr<LoadBalancer>()>>
                     map = {
@@ -91,12 +87,10 @@ namespace cookrpc {
             return "";
         }
 
-        try
-        {
+        try {
             return Imp::instance_->select(servers);
         } 
-        catch (const std::exception &e)
-        {
+        catch (const std::exception &e) {
             LOG_ERROR("Error in load balancer select: {}", e.what());
             return servers[0];
         }

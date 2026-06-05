@@ -36,7 +36,6 @@ namespace cookrpc
         bool Write(const std::string &data);
         bool Write(const RpcResponse &response);
         void Close();
-        bool IsValid() const;
         bool ReadWithTimeout(int timeout_ms);
 
         // 获取连接信息

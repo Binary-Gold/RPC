@@ -71,8 +71,7 @@ public:
      *  获取Logger单例实例
      *  Logger& 返回Logger实例的引用
      */
-    static Logger &GetInstance()
-    {
+    static Logger &GetInstance() {
         static Logger instance;
         return instance;
     }
@@ -89,15 +88,12 @@ public:
      * 4. 配置日志格式和级别
      * 5. 设置为默认logger
      */
-    bool Init(const std::string &log_dir = "../logs")
-    {
+    bool Init(const std::string &log_dir = "../logs") {
         try {
             // 创建日志目录
             std::filesystem::path log_path(log_dir);
-            if (!std::filesystem::exists(log_path))
-            {
-                if (!std::filesystem::create_directories(log_path))
-                {
+            if (!std::filesystem::exists(log_path)) {
+                if (!std::filesystem::create_directories(log_path)) {
                     std::cerr << "Failed to create log directory: " << log_dir << std::endl;
                     return false;
                 }
@@ -105,24 +101,21 @@ public:
 
             // 创建控制台和文件日志记录器
             auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-            if (!console_sink)
-            {
+            if (!console_sink) {
                 std::cerr << "Failed to create console sink" << std::endl;
                 return false;
             }
 
             std::string log_file = log_dir + "/cookrpc.log";
             auto file_sink = std::make_shared<spdlog::sinks::daily_file_sink_mt>(log_file, 0, 0);
-            if (!file_sink)
-            {
+            if (!file_sink) {
                 std::cerr << "Failed to create file sink: " << log_file << std::endl;
                 return false;
             }
 
             std::vector<spdlog::sink_ptr> sinks{console_sink, file_sink};
             logger_ = std::make_shared<spdlog::logger>("main", sinks.begin(), sinks.end());
-            if (!logger_)
-            {
+            if (!logger_) {
                 std::cerr << "Failed to create logger" << std::endl;
                 return false;
             }
@@ -134,8 +127,7 @@ public:
             spdlog::set_default_logger(logger_);
 
             // 测试日志是否可写
-            try
-            {
+            try {
                 // LOG_INFO("Logger initialized successfully");
             }
             catch (const std::exception &e) {
@@ -145,8 +137,7 @@ public:
 
             return true;
         }
-        catch (const std::exception &e)
-        {
+        catch (const std::exception &e) {
             std::cerr << "Logger initialization failed: " << e.what() << std::endl;
             return false;
         }

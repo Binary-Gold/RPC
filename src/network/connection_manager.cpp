@@ -4,10 +4,8 @@
 namespace cookrpc
 {
 
-    void ConnectionManager::AddConnection(std::shared_ptr<Connection> conn)
-    {
-        if (!conn)
-        {
+    void ConnectionManager::AddConnection(std::shared_ptr<Connection> conn) {
+        if (!conn) {
             LOG_ERROR("add null connection");
             return;
         }
@@ -17,8 +15,7 @@ namespace cookrpc
 
         // 检查是否已经存在
         auto it = connections_.find(fd);
-        if (it != connections_.end())
-        {
+        if (it != connections_.end()) {
             LOG_WARN("connection already exists, fd: {}", fd);
             return;
         }
@@ -26,26 +23,21 @@ namespace cookrpc
         connections_[fd] = conn;
     }
 
-    void ConnectionManager::RemoveConnection(int fd)
-    {
+    void ConnectionManager::RemoveConnection(int fd) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = connections_.find(fd);
-        if (it != connections_.end())
-        {
+        if (it != connections_.end()) {
             connections_.erase(it);
         }
-        else
-        {
+        else {
             LOG_WARN("connection not found, fd: {}", fd);
         }
     }
 
-    std::shared_ptr<Connection> ConnectionManager::GetConnection(int fd)
-    {
+    std::shared_ptr<Connection> ConnectionManager::GetConnection(int fd) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = connections_.find(fd);
-        if (it != connections_.end())
-        {
+        if (it != connections_.end()) {
             return it->second;
         }
         return nullptr;
@@ -58,21 +50,17 @@ namespace cookrpc
     }
 
     // 关闭所有连接
-    void ConnectionManager::CloseAll()
-    {
+    void ConnectionManager::CloseAll() {
         std::lock_guard<std::mutex> lock(mutex_);
-        for (auto &pair : connections_)
-        {
-            if (auto conn = pair.second)
-            {
+        for (auto &pair : connections_) {
+            if (auto conn = pair.second) {
                 conn->Close();
             }
         }
         connections_.clear();
     }
 
-    ConnectionManager::~ConnectionManager()
-    {
+    ConnectionManager::~ConnectionManager() {
         CloseAll();
     }
 
