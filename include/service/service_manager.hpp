@@ -63,7 +63,7 @@ namespace cookrpc
             return meeting_ctrl::ThreadPoolSingleton::GetInstance().Enqueue(
                 meeting_ctrl::TaskPriority::HIGH,
                 [this, service_name, method_name, args, result]() -> bool {
-                    return this->HandleRpcRequestSync(service_name, method_name, args, *result);
+                    return this->HandleRpcRequestSync_(service_name, method_name, args, *result);
                 }
             );
         }
@@ -73,7 +73,7 @@ namespace cookrpc
                               const std::string &method_name,
                               const std::string &args,
                               std::string &result) {
-            return HandleRpcRequestSync(service_name, method_name, args, result);
+            return HandleRpcRequestSync_(service_name, method_name, args, result);
         }
 
         // 获取线程池统计信息
@@ -91,7 +91,7 @@ namespace cookrpc
         ServiceManager(const ServiceManager &) = delete;
         ServiceManager &operator=(const ServiceManager &) = delete;
 
-        bool HandleRpcRequestSync(const std::string &service_name,
+        bool HandleRpcRequestSync_(const std::string &service_name,
                                  const std::string &method_name,
                                  const std::string &args,
                                  std::string &result) {

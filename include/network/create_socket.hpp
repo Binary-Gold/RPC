@@ -13,7 +13,7 @@ namespace cookrpc
     {
     public:
         static std::shared_ptr<CreateSocket> Create(const std::string &servers_name_prefix, uint16_t servers_port, int servers_max_connections, int socket_timeout_ms, const std::string &servers_ip);
-        // static std::shared_ptr<CreateSocket> Create(const cookrpc::RpcServerConfig &config);
+        // static std::shared_ptr<CreateSocket> Create(const ::RpcServerConfig &config);
         ~CreateSocket();
         int GetFd() const;
         const std::string &GetIp() const;
@@ -25,11 +25,8 @@ namespace cookrpc
                      const std::string &servers_ip);
         // CreateSocket(const cookrpc::RpcServerConfig &config);
 
-        int Accept();
-
     private:
-        bool Init();
-        bool SetSocketOpt();
+        bool Init_();
         
         struct Imp;
         std::unique_ptr<Imp> imp_;

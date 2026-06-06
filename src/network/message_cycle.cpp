@@ -261,9 +261,6 @@ static std::atomic<bool> stop_flag(false);
 
     void MessageCycle::HandleRpcRequestSync_(const std::shared_ptr<Connection> &conn,
                                           const RpcRequest &request) {
-        RpcResponse response;
-        response.setSequenceId(request.getSequenceId()); // 设置相同的序列号
-
         try {
             // 参数验证
             if (!ValidateRequest_(request)) {
@@ -281,7 +278,7 @@ static std::atomic<bool> stop_flag(false);
                 request.getPayload(),
                 result
             );
-
+ 
             if (!success) {
                 LOG_ERROR("Failed to handle request: method={}", request.getMethodName());
                 SendErrorResponse_(conn, request.getSequenceId(),
