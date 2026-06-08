@@ -24,9 +24,9 @@ namespace cookrpc
                      int socket_timeout_ms,
                      const std::string &servers_ip);
         // CreateSocket(const cookrpc::RpcServerConfig &config);
-
     private:
         bool Init_();
+        bool SetSocketOpt_();
         
         struct Imp;
         std::unique_ptr<Imp> imp_;

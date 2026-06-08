@@ -62,10 +62,6 @@ target_link_libraries(rpc PUBLIC
 # Google Test
 add_subdirectory(/home/kaanh/googletest ${CMAKE_BINARY_DIR}/googletest)
 
-# Integration test (ZooKeeper-based)
-add_executable(rpc_test test/main.cpp)
-target_link_libraries(rpc_test PRIVATE rpc)
-
 # Load balancer unit tests
 add_executable(load_balancer_test test/load_balancer_test.cpp)
 target_link_libraries(load_balancer_test PRIVATE rpc gtest gtest_main)
@@ -97,3 +93,11 @@ target_link_libraries(protobuf_serializer_test PRIVATE rpc gtest gtest_main)
 # ServiceManager unit tests
 add_executable(service_manager_test test/service_manager_test.cpp)
 target_link_libraries(service_manager_test PRIVATE rpc gtest gtest_main)
+
+# Server integration test
+add_executable(servers_main test/servers_main.cpp)
+target_link_libraries(servers_main PRIVATE rpc)
+
+# Client integration test
+add_executable(client_main test/client_main.cpp)
+target_link_libraries(client_main PRIVATE rpc)

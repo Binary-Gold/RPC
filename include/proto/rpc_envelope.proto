@@ -15,3 +15,12 @@ message RpcResponseProto {
     bytes  result_data   = 3;
     uint32 sequence_id   = 4;
 }
+
+message EchoRequest {
+    string message = 1;
+}
+
+message EchoResponse {
+    string echo              = 1;
+    string received_message  = 2;
+}

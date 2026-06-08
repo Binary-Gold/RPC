@@ -71,7 +71,7 @@ bool CreateSocket::Init_() {
         return false;
     }
 
-    if (!SetSocketOpt()) {
+    if (!SetSocketOpt_()) {
         ::close(imp_->fd_);
         imp_->fd_ = -1;
         return false;
@@ -111,5 +111,60 @@ bool CreateSocket::Init_() {
     }
     return true;
 }
+
+bool CreateSocket::SetSocketOpt_() {
+        // 设置发送超时
+        struct timeval send_timeout;
+        send_timeout.tv_sec = imp_->socket_timeout_ms_ / 1000;           // 转换为秒
+        send_timeout.tv_usec = (imp_->socket_timeout_ms_ % 1000) * 1000; // 剩余毫秒转换为微秒
+        if (setsockopt(imp_->fd_, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout)) < 0) {
+            LOG_ERROR("set send timeout error, errno: {}, error: {}", errno, strerror(errno));
+            return false;
+        }
+
+        // 设置接收超时
+        struct timeval recv_timeout;
+        recv_timeout.tv_sec = imp_->socket_timeout_ms_ / 1000;
+        recv_timeout.tv_usec = (imp_->socket_timeout_ms_ % 1000) * 1000;
+        if (setsockopt(imp_->fd_, SOL_SOCKET, SO_RCVTIMEO, &recv_timeout, sizeof(recv_timeout)) < 0) {
+            LOG_ERROR("set recv timeout error, errno: {}, error: {}", errno, strerror(errno));
+            return false;
+        }
+
+        // 设置地址重用
+        int reuse = 1;
+        if (::setsockopt(imp_->fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+            LOG_ERROR("set SO_REUSEADDR error, errno: %d, error: %s", errno, strerror(errno));
+            return false;
+        }
+
+        // 设置 TCP NODELAY
+        int nodelay = 1;
+        if (::setsockopt(imp_->fd_, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
+            LOG_ERROR("set TCP_NODELAY error, errno: %d, error: %s", errno, strerror(errno));
+            return false;
+        }
+
+        // 设置非阻塞
+        int flags = ::fcntl(imp_->fd_, F_GETFL, 0);
+        if (flags < 0) {
+            LOG_ERROR("get socket flags error, errno: %d, error: %s", errno, strerror(errno));
+            return false;
+        }
+
+        if (::fcntl(imp_->fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
+            LOG_ERROR("set socket nonblock error, errno: %d, error: %s", errno, strerror(errno));
+            return false;
+        }
+
+        // 设置 TCP keepalive
+        int keepalive = 1;
+        if (::setsockopt(imp_->fd_, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive)) < 0) {
+            LOG_ERROR("set SO_KEEPALIVE error, errno: %d, error: %s", errno, strerror(errno));
+            return false;
+        }
+
+        return true;
+    }
 
 } // namespace cookrpc
