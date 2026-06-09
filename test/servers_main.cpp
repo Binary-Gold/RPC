@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
         }
 
         // 初始化配置
-        std::string config_filename = "../include/config/rpc_server.json";
+        std::string config_filename = "config/rpc_server.json";
         auto &rpc_server_config = cookrpc::RpcServerConfig::GetInstance();
         if (!rpc_server_config.InitRpcServerConfig(config_filename))
         {
@@ -167,12 +167,10 @@ int main(int argc, char *argv[])
         // 向 ZooKeeper 注册服务实例
         auto& zk_handler = cookrpc::ZkConnHandler::GetInstance();
         auto registry_config = rpc_server_config.GetServiceRegistryConfig();
-        if (!zk_handler.RegisterServicesFromConfig(registry_config))
-        {
+        if (!zk_handler.RegisterServicesFromConfig(registry_config)) {
             LOG_ERROR("Failed to register services to ZooKeeper");
             return 1;
         }
-
         g_message_cycle = message_cycle.get();
         LOG_INFO("Server starting, listening on {}:{}", servers_ip, servers_port);
         

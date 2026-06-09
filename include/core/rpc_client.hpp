@@ -24,7 +24,7 @@ namespace cookrpc
     public:
         using ResponseCallback = std::function<void(const std::string&, bool)>;
 
-        explicit RpcClient(const std::string& config_path = "../config/rpc_client.json");
+        explicit RpcClient(const std::string& config_path = "config/rpc_client.json");
         ~RpcClient();
 
         RpcClient(const RpcClient&) = delete;
@@ -126,6 +126,16 @@ namespace cookrpc
                 return false;
             }
 
+            // Prepend RpcHeader
+            RpcHeader header;
+            header.magic = RpcHeader::MAGIC;
+            header.message_length = encrypted_data.size();
+            header.sequence_id = rpc_request.getSequenceId();
+            std::string frame;
+            frame.resize(sizeof(header) + encrypted_data.size());
+            std::memcpy(&frame[0], &header, sizeof(header));
+            std::memcpy(&frame[sizeof(header)], encrypted_data.data(), encrypted_data.size());
+            encrypted_data = std::move(frame);
             return true;
         }
 
@@ -138,13 +148,24 @@ namespace cookrpc
             }
 
             std::string raw_response_data = GetConnection()->GetReadBufferData();
-            if (raw_response_data.empty()) {
-                LOG_ERROR("No response data received");
+            if (raw_response_data.size() < sizeof(RpcHeader)) {
+                LOG_ERROR("Response too small");
                 return false;
             }
 
+            RpcHeader header;
+            std::memcpy(&header, raw_response_data.data(), sizeof(header));
+            if (header.magic != RpcHeader::MAGIC) {
+                LOG_ERROR("Bad response magic");
+                return false;
+            }
+
+            std::string encrypted_body(
+                raw_response_data.begin() + sizeof(header),
+                raw_response_data.begin() + sizeof(header) + header.message_length);
+
             std::string decrypted_data;
-            if (!AesEncrypt::getInstance().Decrypt(raw_response_data, decrypted_data)) {
+            if (!AesEncrypt::getInstance().Decrypt(encrypted_body, decrypted_data)) {
                 LOG_ERROR("Failed to decrypt response data");
                 return false;
             }

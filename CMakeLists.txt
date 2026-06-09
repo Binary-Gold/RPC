@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(RPC VERSION 1.0.0 LANGUAGES CXX)
 
+include(FetchContent)
+
 # Compiler settings
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,10 +15,16 @@ set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "Use external fmt library" FORCE)
 add_subdirectory(third_party/spdlog)
 add_subdirectory(third_party/json)
 
+# Bundled abseil (protobuf dependency)
+set(ABSL_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/abseil-cpp)
+
 # Bundled protobuf
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+set(protobuf_ABSL_PROVIDER "package" CACHE STRING "" FORCE)
 add_subdirectory(third_party/protobuf)
 
 # System-installed ZooKeeper C client
@@ -60,7 +68,12 @@ target_link_libraries(rpc PUBLIC
 )
 
 # Google Test
-add_subdirectory(/home/kaanh/googletest ${CMAKE_BINARY_DIR}/googletest)
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.15.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(googletest)
 
 # Load balancer unit tests
 add_executable(load_balancer_test test/load_balancer_test.cpp)
@@ -101,3 +114,7 @@ target_link_libraries(servers_main PRIVATE rpc)
 # Client integration test
 add_executable(client_main test/client_main.cpp)
 target_link_libraries(client_main PRIVATE rpc)
+
+# Benchmark
+add_executable(benchmark test/benchmark.cpp)
+target_link_libraries(benchmark PRIVATE rpc)

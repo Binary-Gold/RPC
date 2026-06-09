@@ -18,5 +18,5 @@
         "keep_alive_time": 60
     },
     "load_balance_strategy": "round",
-    "register_config": "../config/servers.json"
+    "register_config": "config/servers.json"
 }

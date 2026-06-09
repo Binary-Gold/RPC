@@ -3,11 +3,11 @@
     "service_version": "1.0.0",
     "registry_nodes": [
         {
-            "address": "124.221.19.77", 
+            "address": "127.0.0.1", 
             "port": 8989
         },
         {
-            "address": "0.0.0.0",
+            "address": "127.0.0.1",
             "port": 8989
         }
     ]

@@ -55,7 +55,7 @@ void testAsyncCall(RpcClient& client) {
 
 int main() {
     try {
-        RpcClient client("../include/config");
+        RpcClient client;
 
         std::cout << "Connected to RPC server" << std::endl;
 

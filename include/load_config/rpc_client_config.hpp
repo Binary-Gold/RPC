@@ -34,7 +34,7 @@ namespace cookrpc
         int GetZkPort() const;
 
     private:
-        RpcClientConfig() = default;
+        RpcClientConfig();
 
         struct Imp;
         std::unique_ptr<Imp> imp_;

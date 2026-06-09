@@ -29,6 +29,7 @@ struct Connection::Imp {
 Connection::Connection(int fd)
     : imp_(std::make_unique<Imp>()) {
     // 先检查 fd 的有效性
+    imp_->fd_ = fd;
     if (imp_->fd_ < 0) {
         LOG_ERROR("connection fd is invalid: {}", imp_->fd_);
         imp_->state_ = State::DISCONNECTED;
@@ -65,7 +66,7 @@ Connection::Connection(int fd)
 
 Connection::~Connection() {
     try {
-        HandleError_();
+        Close();
     } catch (const std::exception& e) {
         std::cerr << "Exception in Connection destructor: " << e.what() << std::endl;
     } catch (...) {
@@ -253,7 +254,9 @@ Connection::State Connection::GetState() const {
 }
 
 std::string Connection::GetReadBufferData() {
-    return std::string(imp_->read_buffer_.begin(), imp_->read_buffer_.end());
+    std::string s(imp_->read_buffer_.begin(), imp_->read_buffer_.end());
+    imp_->read_buffer_.clear();
+    return s;
 }
 
 void Connection::SetMessageCallback(const MessageCallback& cb) {

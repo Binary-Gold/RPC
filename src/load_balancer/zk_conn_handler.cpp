@@ -11,6 +11,7 @@
 #include "load_balancer/load_balancer.hpp"
 #include "log_manager.hpp"
 #include "registry/services_registry.hpp"
+#include "load_config/registry_config.hpp"
 
 namespace cookrpc {
 
@@ -111,52 +112,37 @@ bool ZkConnHandler::RegisterService(const std::string& service_name, const std::
 }
 
 bool ZkConnHandler::RegisterServicesFromConfig(const ServiceRegistryConfig* registry_config) {
-    // todo registry_config->GetRegistryNodesSize()
-    // if (!registry_config || registry_config->GetRegistryNodesSize() == 0)
-    // {
-    //     LOG_WARN("No registry configuration found, skipping ZooKeeper registration");
-    //     return true; 
-    // }
+    if (!registry_config || registry_config->GetRegistryNodesSize() == 0) {
+        LOG_WARN("No registry configuration found, skipping ZooKeeper registration");
+        return true;
+    }
 
-    // try 
-    // {
-    //     ServiceRegistry* registry = GetOrCreateServiceRegistry();
-    //     if (!registry) {
-    //         LOG_ERROR("Failed to get or create ServiceRegistry for batch service registration");
-    //         return false;
-    //     }
-        
-    //     // 注册配置文件中的所有服务节点
-    //     const auto& registry_nodes = registry_config->GetRegistryNodes();
-    //     const std::string& service_name = registry_config->GetServiceName();
-        
-    //     bool all_success = true;
-    //     for (const auto& node : registry_nodes)
-    //     {
-    //         std::string service_address = node.address + ":" + std::to_string(node.port);
-    //         if (registry->registerService(service_name, service_address))
-    //         {
-    //             // // LOG_INFO("Successfully registered service: {} at {}", service_name, service_address);
-    //         }
-    //         else
-    //         {
-    //             // LOG_ERROR("Failed to register service: {} at {}", service_name, service_address);
-    //             all_success = false;  // 记录失败但继续处理其他节点
-    //         }
-    //     }
-        
-    //     // 重要：不在这里销毁service_registry_，保持连接以维持临时节点
-    //     // ZooKeeper的临时节点在连接断开时会自动删除，这是服务发现的重要机制
-    //     // 智能指针会在对象销毁时自动管理内存
-    //     // // LOG_INFO("Service registration completed. Keeping ZooKeeper connection alive to maintain ephemeral nodes.");
-        
-    //     return all_success;
-    // }
-    // catch (const std::exception& e)
-    // {
-    //     LOG_ERROR("Exception during service registration: {}", e.what());
-    //     return false;
-    // }
+    try {
+        ServiceRegistry* registry = GetOrCreateServiceRegistry();
+        if (!registry) {
+            LOG_ERROR("Failed to get or create ServiceRegistry for batch service registration");
+            return false;
+        }
+
+        const auto& registry_nodes = registry_config->GetRegistryNodes();
+        const std::string& service_name = registry_config->GetServiceName();
+
+        bool all_success = true;
+        for (const auto& node : registry_nodes) {
+            std::string service_address = node.address + ":" + std::to_string(node.port);
+            if (registry->RegisterService(service_name, service_address)) {
+                // LOG_INFO("Successfully registered service: {} at {}", service_name, service_address);
+            } else {
+                // LOG_ERROR("Failed to register service: {} at {}", service_name, service_address);
+                all_success = false;
+            }
+        }
+
+        return all_success;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Exception during service registration: {}", e.what());
+        return false;
+    }
 
     return false;
 }

@@ -16,6 +16,7 @@ struct RpcClientConfig::Imp {
     int server_port_{0};
 };
 
+RpcClientConfig::RpcClientConfig() : imp_(std::make_unique<Imp>()) {}
 RpcClientConfig::~RpcClientConfig() = default;
 
 RpcClientConfig& RpcClientConfig::GetInstance() {

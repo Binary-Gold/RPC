@@ -50,10 +50,8 @@ ServiceRegistry::ServiceRegistry(const std::string& zk_hosts) : imp_(std::make_u
 ServiceRegistry::~ServiceRegistry() {
     if (imp_->zk_handle_) {
         try {
-            LOG_INFO("Closing ZooKeeper connection");
             zookeeper_close(imp_->zk_handle_);
             imp_->zk_handle_ = nullptr;
-            LOG_INFO("ZooKeeper connection closed successfully");
         } catch (const std::exception& e) {
             std::cerr << "Exception closing ZooKeeper: " << e.what() << std::endl;
             imp_->zk_handle_ = nullptr;
