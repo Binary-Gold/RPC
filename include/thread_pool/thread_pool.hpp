@@ -19,7 +19,6 @@ enum class TaskPriority {
 
 enum class ThreadPoolState {
     RUNNING,
-    PAUSED,
     SHUTTING_DOWN,
     STOPPED
 };
@@ -84,9 +83,6 @@ public:
         }
         return res;
     }
-
-    void Pause();
-    void Resume();
 
     Stats GetStats() const;
     size_t Size() const noexcept;

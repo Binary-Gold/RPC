@@ -26,9 +26,6 @@ public:
     static size_t GetQueueSize();
     static size_t GetPoolSize();
 
-    static bool Pause();
-    static bool Resume();
-
     static bool Shutdown(std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
     static void Destroy();
     static bool Exists();

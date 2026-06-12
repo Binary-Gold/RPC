@@ -104,21 +104,18 @@ bool RpcClient::loadConfig(const std::string& conf_path) {
     return true;
 }
 
-bool RpcClient::validateServerInfo(const std::string& ip, int port, int fd) {
+bool RpcClient::validateServerInfo(const std::string& ip, int port) {
     if (ip.empty()) {
         LOG_ERROR("Empty IP address");
-        close(fd);
         return false;
     }
     struct sockaddr_in sa;
     if (inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr)) != 1) {
         LOG_ERROR("Invalid IP address format: {}", ip);
-        close(fd);
         return false;
     }
     if (port <= 0 || port > 65535) {
         LOG_ERROR("Invalid port number: {}", port);
-        close(fd);
         return false;
     }
     return true;
@@ -181,6 +178,10 @@ bool RpcClient::Connect() {
     std::string server_ip = server_ip_and_port.substr(0, server_ip_and_port.find(":"));
     int server_port = std::stoi(server_ip_and_port.substr(server_ip_and_port.find(":") + 1));
 
+    if (!validateServerInfo(server_ip, server_port)) {
+        return false;
+    }
+
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -192,13 +193,6 @@ bool RpcClient::Connect() {
         int socket_fd;
         if (!initSocket(socket_fd)) {
             LOG_ERROR("Init socket failed");
-            retry_count++;
-            continue;
-        }
-
-        if (!validateServerInfo(server_ip, server_port, socket_fd)) {
-            close(socket_fd);
-            LOG_ERROR("Validate server info failed");
             retry_count++;
             continue;
         }

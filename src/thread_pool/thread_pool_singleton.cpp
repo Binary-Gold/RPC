@@ -55,24 +55,6 @@ size_t ThreadPoolSingleton::GetPoolSize() {
     return instance_->Size();
 }
 
-bool ThreadPoolSingleton::Pause() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!instance_) {
-        return false;
-    }
-    instance_->Pause();
-    return true;
-}
-
-bool ThreadPoolSingleton::Resume() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!instance_) {
-        return false;
-    }
-    instance_->Resume();
-    return true;
-}
-
 bool ThreadPoolSingleton::Shutdown(std::chrono::milliseconds timeout) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!instance_) {

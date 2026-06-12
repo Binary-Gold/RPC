@@ -103,25 +103,6 @@ TEST(ThreadPoolTest, HighPriorityExecutedBeforeLow) {
 }
 
 // ============================================================
-// Pause / Resume
-// ============================================================
-TEST(ThreadPoolTest, PauseResumeCycle) {
-    ThreadPool pool(2);
-
-    pool.Pause();
-    EXPECT_EQ(pool.GetState(), ThreadPoolState::PAUSED);
-
-    pool.Resume();
-    EXPECT_EQ(pool.GetState(), ThreadPoolState::RUNNING);
-
-    // 恢复后还能正常执行
-    std::atomic<int> counter{0};
-    auto fut = pool.Enqueue(TaskPriority::NORMAL, [&] { counter.fetch_add(1); });
-    fut.wait();
-    EXPECT_EQ(counter.load(), 1);
-}
-
-// ============================================================
 // Shutdown
 // ============================================================
 TEST(ThreadPoolTest, ShutdownJoinsAllThreads) {

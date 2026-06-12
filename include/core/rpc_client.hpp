@@ -34,7 +34,7 @@ namespace cookrpc
         bool Connect();
         std::string GetServerAddress(const std::string& zk_namespace) const;
         bool initSocket(int& fd);
-        bool validateServerInfo(const std::string& ip, int port, int fd);
+        bool validateServerInfo(const std::string& ip, int port);
         bool tryConnect(int fd, const struct sockaddr_in& server_addr, int retry_count);
         void Disconnect();
         bool IsConnected() const;

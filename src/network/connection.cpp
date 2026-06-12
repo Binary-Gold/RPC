@@ -17,7 +17,6 @@ struct Connection::Imp {
     uint16_t peer_port_ = 0;
 
     std::vector<char> read_buffer_;
-    std::vector<char> write_buffer_;
 
     MessageCallback message_callback_ = nullptr;
     CloseCallback close_callback_ = nullptr;
@@ -133,21 +132,15 @@ bool Connection::Write(const std::string& data) {
         return false;
     }
 
-    // 添加到写缓冲
-    imp_->write_buffer_.insert(imp_->write_buffer_.end(), data.begin(), data.end());
-
-    // 尝试发送数据
-    while (!imp_->write_buffer_.empty()) {
-        ssize_t n = write(imp_->fd_, imp_->write_buffer_.data(), imp_->write_buffer_.size());
+    size_t total = 0;
+    while (total < data.size()) {
+        ssize_t n = write(imp_->fd_, data.data() + total, data.size() - total);
         if (n < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
-            }
             LOG_ERROR("write error, fd: {}, errno: {}", imp_->fd_, errno);
             imp_->state_ = State::DISCONNECTED;
             return false;
         }
-        imp_->write_buffer_.erase(imp_->write_buffer_.begin(), imp_->write_buffer_.begin() + n);
+        total += n;
     }
     return true;
 }
@@ -276,7 +269,7 @@ bool Connection::ProcessMessage() {
 
         if (header.magic != RpcHeader::MAGIC) {
             LOG_ERROR("Magic number mismatch: {:#x}, fd: {}", header.magic, imp_->fd_);
-            Close();
+            HandleError_();
             return false;
         }
 
