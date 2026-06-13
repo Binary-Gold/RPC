@@ -41,22 +41,25 @@ set_target_properties(zstd PROPERTIES IMPORTED_LOCATION ${ZSTD_LIBRARY})
 
 # Protobuf code generation
 set(PROTO_DIR "${CMAKE_SOURCE_DIR}/include/proto")
-set(PROTOC "${CMAKE_BINARY_DIR}/third_party/protobuf/protoc-36.0.0")
+set(PROTO_GEN_DIR "${CMAKE_BINARY_DIR}/generated/proto")
+set(PROTOC "${CMAKE_BINARY_DIR}/third_party/protobuf/protoc")
 
 add_custom_command(
-    OUTPUT ${PROTO_DIR}/rpc_envelope.pb.cc ${PROTO_DIR}/rpc_envelope.pb.h
-    COMMAND ${PROTOC} --cpp_out="${PROTO_DIR}" --proto_path="${PROTO_DIR}"
+    OUTPUT ${PROTO_GEN_DIR}/rpc_envelope.pb.cc ${PROTO_GEN_DIR}/rpc_envelope.pb.h
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${PROTO_GEN_DIR}
+    COMMAND ${PROTOC} --cpp_out="${PROTO_GEN_DIR}" --proto_path="${PROTO_DIR}"
             ${PROTO_DIR}/rpc_envelope.proto
-    DEPENDS ${PROTO_DIR}/rpc_envelope.proto
+    DEPENDS ${PROTO_DIR}/rpc_envelope.proto protoc
     COMMENT "Generating protobuf C++ from rpc_envelope.proto"
 )
 
 # Project library
 file(GLOB_RECURSE RPC_SOURCES CONFIGURE_DEPENDS src/*.cpp)
-list(APPEND RPC_SOURCES ${PROTO_DIR}/rpc_envelope.pb.cc)
+list(APPEND RPC_SOURCES ${PROTO_GEN_DIR}/rpc_envelope.pb.cc)
 add_library(rpc STATIC ${RPC_SOURCES})
 target_include_directories(rpc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
 target_link_libraries(rpc PUBLIC
     spdlog::spdlog
@@ -66,6 +69,10 @@ target_link_libraries(rpc PUBLIC
     zstd
     pthread
 )
+
+# Copy config files to build directory (resolve symlink)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/config)
+file(COPY ${CMAKE_SOURCE_DIR}/include/config/ DESTINATION ${CMAKE_BINARY_DIR}/config)
 
 # Google Test
 FetchContent_Declare(googletest

@@ -121,7 +121,7 @@ public:
             }
                 // 设置日志格式
             logger_->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%%^%l%%$] [%t] %v");
-            logger_->set_level(spdlog::level::trace);
+            logger_->set_level(spdlog::level::err);
 
             // 设置为默认logger
             spdlog::set_default_logger(logger_);

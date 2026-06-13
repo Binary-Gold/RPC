@@ -4,3 +4,5 @@ compile_commands.json
 .claude/
 logs/
 *.log
+include/proto/*.pb.h
+include/proto/*.pb.cc

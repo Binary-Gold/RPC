@@ -194,7 +194,7 @@ namespace cookrpc
                 return false;
             }
 
-            CLIENT_INFO("Successfully processed response");
+            CLIENT_DEBUG("Successfully processed response");
             return true;
         }
 
