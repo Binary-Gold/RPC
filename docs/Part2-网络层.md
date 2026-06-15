@@ -109,7 +109,7 @@ accept(fd) → new Connection(fd)
   → 设非阻塞 + TCP_NODELAY + 回调
   → 加入 epoll + ConnectionManager
 
-HTTP请求到达:
+RPC 请求到达（二进制帧）:
   → epoll_wait 返回
   → ConnectionManager.Find(fd)
   → conn->Read() → conn->ProcessMessage()

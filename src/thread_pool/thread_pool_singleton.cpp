@@ -47,14 +47,6 @@ size_t ThreadPoolSingleton::GetQueueSize() {
     return instance_->QueueSize();
 }
 
-size_t ThreadPoolSingleton::GetPoolSize() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!instance_) {
-        return 0;
-    }
-    return instance_->Size();
-}
-
 bool ThreadPoolSingleton::Shutdown(std::chrono::milliseconds timeout) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!instance_) {

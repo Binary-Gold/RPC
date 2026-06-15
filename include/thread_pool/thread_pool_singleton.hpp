@@ -24,7 +24,6 @@ public:
 
     static ThreadPool::Stats GetStats();
     static size_t GetQueueSize();
-    static size_t GetPoolSize();
 
     static bool Shutdown(std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
     static void Destroy();

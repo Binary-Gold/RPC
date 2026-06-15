@@ -108,7 +108,6 @@ static std::atomic<bool> stop_flag(false);
             return false;
         }
 
-        struct epoll_event ev;
         if (epoll_ctl(imp_->epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) == -1) {
             LOG_ERROR("Failed to remove fd {} from epoll: {}", fd, strerror(errno));
         }

@@ -70,10 +70,6 @@ ThreadPool::Stats ThreadPool::GetStats() const {
     return stats;
 }
 
-size_t ThreadPool::Size() const noexcept {
-    return imp_->workers_.size();
-}
-
 size_t ThreadPool::QueueSize() const noexcept {
     std::unique_lock<std::mutex> lock(imp_->queue_mutex_);
     return imp_->tasks_.size();
@@ -97,7 +93,7 @@ bool ThreadPool::Shutdown(std::chrono::milliseconds wait_timeout_ms) {
             return false;
         }
         
-        imp_->state_ = ThreadPoolState::STOPPED;
+        imp_->state_.store(ThreadPoolState::STOPPED);
     }
     
     imp_->condition_.notify_all();
@@ -112,9 +108,9 @@ bool ThreadPool::Shutdown(std::chrono::milliseconds wait_timeout_ms) {
 }
 
 void ThreadPool::StopNow() {
-        {
+    {
         std::unique_lock<std::mutex> lock(imp_->queue_mutex_);
-        imp_->state_ = ThreadPoolState::STOPPED;
+        imp_->state_.store(ThreadPoolState::STOPPED);
         
         while(!imp_->tasks_.empty()) {
             imp_->tasks_.pop();

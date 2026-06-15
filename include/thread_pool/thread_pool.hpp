@@ -85,7 +85,6 @@ public:
     }
 
     Stats GetStats() const;
-    size_t Size() const noexcept;
     size_t QueueSize() const noexcept;
 
     bool Shutdown(std::chrono::milliseconds wait_timeout_ms = std::chrono::milliseconds::max());

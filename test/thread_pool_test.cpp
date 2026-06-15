@@ -14,8 +14,8 @@ using namespace meeting_ctrl;
 // ============================================================
 TEST(ThreadPoolTest, ConstructWithThreadCount) {
     ThreadPool pool(4);
-    EXPECT_EQ(pool.Size(), 4u);
     EXPECT_EQ(pool.GetState(), ThreadPoolState::RUNNING);
+    EXPECT_EQ(pool.QueueSize(), 0u);
 }
 
 TEST(ThreadPoolTest, ConstructWithConfig) {
@@ -23,7 +23,7 @@ TEST(ThreadPoolTest, ConstructWithConfig) {
     config.core_threads = 2;
     config.max_threads = 4;
     ThreadPool pool(config);
-    EXPECT_EQ(pool.Size(), 2u);
+    EXPECT_EQ(pool.QueueSize(), 0u);
 }
 
 // ============================================================
