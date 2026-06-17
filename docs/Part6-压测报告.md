@@ -30,7 +30,7 @@
 ### QPS 天花板 ~5万
 
 不管 20 个还是 200 个客户端，吞吐都稳在 ~5 万——说明服务端 CPU 已饱和。
-瓶颈在 zstd 压缩 + protobuf 序列化 + 加密的计算开销，不是 epoll 或线程调度。
+瓶颈在 AES 加密（随机数生成 ~11%）+ zstd 压缩（~7%）+ 线程池锁竞争（~4%），服务端 CPU 已顶满。
 
 ### Payload 影响小
 
@@ -73,15 +73,64 @@
 足以支撑一个中型互联网产品的后端微服务调用量。
 ```
 
-## 性能瓶颈定位
+## 性能瓶颈定位（perf 火焰图实测）
 
-| 瓶颈 | 占比 | 原因 |
+在压测期间对 **服务端进程**（`servers_main`）进行 `perf record` 采样：
+
+```bash
+# 1. 起服务端
+./build/servers_main &
+
+# 2. 记录服务端 CPU 热点（在 benchmark 跑的同时）
+perf record -g -F 99 -p $(pgrep servers_main) -o /tmp/perf_server.data -- sleep 10 &
+./build/benchmark 50 100
+
+# 3. 生成火焰图
+perf script -i /tmp/perf_server.data | \
+  FlameGraph/stackcollapse-perf.pl | \
+  FlameGraph/flamegraph.pl --colors=hot > flamegraph_server.svg
+```
+
+### 实测瓶颈拆解
+
+| 瓶颈 | 占比 | 说明 |
 |------|------|------|
-| zstd 压缩 | ~30% | CPU 密集 |
-| protobuf 序列化 | ~20% | 每次 malloc |
-| 加密 | ~10% | 字节操作 |
-| 时间在 epoll+TCP 协议栈上 | ~25% | 系统开销 |
-| 其余 | ~15% | 线程池调度等 |
+| AES 加密（`GenerateRandomBytes` + `mt19937`） | **~11%** | 每次加密都生成随机密钥 |
+| AES 解密（`ShiftDecrypt`） | **~5%** | Shift 解密算法 |
+| zstd 压缩（`ZSTD_compressBlock_doubleFast` + FSE） | **~7%** | fast 模式下仍占 7% |
+| `pthread_mutex_unlock`（线程池锁） | **~4%** | 10 个线程抢 `queue_mutex_` |
+| `__memcmp_avx2_movbe`（内存比较） | **~5%** | AES 解密相关的缓冲区比较 |
+| 线程空闲等待（`pthread_cond_wait`） | **~17%** | 线程在等任务，不是瓶颈 |
+| protobuf 序列化 | ~0.7% | 轻如鸿毛 |
+| zstd 解压 | ~0.3% | 也很轻 |
+
+### 结论
+
+1. **AES 是最大瓶颈** — `GenerateRandomBytes` + `mt19937` 每次请求生成随机密钥，占 CPU 11%。换成预生成密钥池或硬件 AES-NI 指令，这块能砍掉一大半
+2. **zstd 不是问题** — fast 模式已经够快，压缩 7% 在可接受范围
+3. **protobuf 很轻** — 0.7% 不值得优化
+4. **锁 ~4%** — 换成无锁队列能省掉，但不是最大痛点
+5. **17% 空闲等待** — 10 个线程没跑满，QPS 受限于 CPU 算力而非线程数。减少线程、提高单线程吞吐才能提 QPS
+
+### 下一步优化方向
+
+| 优先级 | 方向 | 预计收益 |
+|--------|------|---------|
+| **P0** | AES 预生成密钥池，避免每包调 mt19937 | AES 开销从 ~16% → ~5% |
+| P1 | zstd 压缩级别从默认 3 → 1 | zstd 从 ~7% → ~2% |
+| P2 | 无锁队列替代 `std::mutex` | 锁 ~4% → ~0.5% |
+
+### 火焰图
+
+**服务端（真正的瓶颈）：**
+![perf 服务端火焰图](../flamegraph_server.svg)
+
+**客户端（仅为参考，大部分时间在等 select）：**
+![perf 客户端火焰图](../flamegraph.svg)
+
+
+
+
 
 ## 如何压测
 
