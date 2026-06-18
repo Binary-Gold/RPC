@@ -1,51 +1,28 @@
-#include <algorithm>
-#include <iomanip>
-#include <random>
-#include <sstream>
-
 #include "encrypt/aes_encrypt.hpp"
 #include "log_manager.hpp"
 
-namespace cookrpc {
-namespace {
+#include <aes.h>
+#include <modes.h>
+#include <filters.h>
+#include <osrng.h>
+#include <base64.h>
 
-const std::string BASE64_CHARS =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+namespace cookrpc
+{
 
-std::string GenerateRandomBytes(size_t length) {
-    std::string result;
-    result.reserve(length);
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 255);
+struct AesEncrypt::Imp {
+    CryptoPP::SecByteBlock key_;  // 16 bytes
+    CryptoPP::AutoSeededRandomPool rng_;
 
-    for (size_t i = 0; i < length; ++i) {
-        result.push_back(static_cast<char>(dis(gen)));
+    Imp() {
+        key_.resize(CryptoPP::AES::DEFAULT_KEYLENGTH);
+        memset(key_.data(), 0, key_.size());
+        memcpy(key_.data(), "CookRPC_2026_Key!", 16);
     }
-    return result;
-}
+};
 
-std::string BytesToHexString(const std::string& data, size_t max_bytes = 32) {
-    std::stringstream ss;
-    ss << std::hex << std::uppercase << std::setfill('0');
-
-    size_t bytes_to_show = std::min(data.size(), max_bytes);
-    for (size_t i = 0; i < bytes_to_show; ++i) {
-        ss << std::setw(2) << static_cast<int>(static_cast<unsigned char>(data[i])) << " ";
-    }
-
-    if (data.size() > max_bytes) {
-        ss << "...";
-    }
-
-    return ss.str();
-}
-
-} // namespace
-
-AesEncrypt::AesEncrypt() {
-    master_key_ = "CookRPC_Secret_Key_2024_Production!@#$%^&*";
-}
+AesEncrypt::AesEncrypt() : imp_(std::make_unique<Imp>()) {}
+AesEncrypt::~AesEncrypt() = default;
 
 bool AesEncrypt::Encrypt(const std::string& data, std::string& ciphertext) {
     try {
@@ -54,12 +31,23 @@ bool AesEncrypt::Encrypt(const std::string& data, std::string& ciphertext) {
             return false;
         }
 
-        std::string session_key = GenerateRandomBytes(KEY_LENGTH);
-        std::string encrypted = ShiftEncrypt(data, session_key);
-        std::string encrypted_key = ShiftEncrypt(session_key, master_key_);
-        std::string combined = encrypted_key + encrypted;
+        // 随机 IV，确保相同明文产生不同密文
+        CryptoPP::SecByteBlock iv(CryptoPP::AES::BLOCKSIZE);
+        imp_->rng_.GenerateBlock(iv.data(), iv.size());
 
-        ciphertext = Base64Encode(combined);
+        std::string encrypted;
+        CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption enc;
+        enc.SetKeyWithIV(imp_->key_.data(), imp_->key_.size(), iv.data());
+        CryptoPP::StringSource ss(data, true,
+            new CryptoPP::StreamTransformationFilter(enc,
+                new CryptoPP::StringSink(encrypted)));
+
+        // IV 拼接在密文前面一起发送
+        std::string iv_str(reinterpret_cast<const char*>(iv.data()), iv.size());
+        std::string combined = iv_str + encrypted;
+
+        CryptoPP::StringSource(combined, true,
+            new CryptoPP::Base64Encoder(new CryptoPP::StringSink(ciphertext), false));
         return true;
     } catch (const std::exception& e) {
         LOG_ERROR("Encryption failed: {}", e.what());
@@ -69,149 +57,35 @@ bool AesEncrypt::Encrypt(const std::string& data, std::string& ciphertext) {
 
 bool AesEncrypt::Decrypt(const std::string& encrypted_data, std::string& plaintext) {
     try {
-        std::string decoded = Base64Decode(encrypted_data);
+        std::string decoded;
+        CryptoPP::StringSource(encrypted_data, true,
+            new CryptoPP::Base64Decoder(new CryptoPP::StringSink(decoded)));
 
-        if (decoded.size() <= KEY_LENGTH) {
-            LOG_ERROR("Decoded data too short: {} bytes, need > {} bytes",
-                      decoded.size(), KEY_LENGTH);
+        if (decoded.size() <= CryptoPP::AES::BLOCKSIZE) {
+            LOG_ERROR("Decoded data too short: {} bytes", decoded.size());
             return false;
         }
 
-        std::string encrypted_key = decoded.substr(0, KEY_LENGTH);
-        std::string encrypted_data_part = decoded.substr(KEY_LENGTH);
+        // 从密文头取出 IV
+        CryptoPP::SecByteBlock iv(CryptoPP::AES::BLOCKSIZE);
+        memcpy(iv.data(), decoded.data(), iv.size());
 
-        std::string session_key = ShiftDecrypt(encrypted_key, master_key_);
-        plaintext = ShiftDecrypt(encrypted_data_part, session_key);
+        std::string decrypted;
+        CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption dec;
+        dec.SetKeyWithIV(imp_->key_.data(), imp_->key_.size(), iv.data());
+        CryptoPP::StringSource ss(
+            reinterpret_cast<const CryptoPP::byte*>(decoded.data()) + CryptoPP::AES::BLOCKSIZE,
+            decoded.size() - CryptoPP::AES::BLOCKSIZE,
+            true,
+            new CryptoPP::StreamTransformationFilter(dec,
+                new CryptoPP::StringSink(decrypted)));
+
+        plaintext = std::move(decrypted);
         return true;
     } catch (const std::exception& e) {
         LOG_ERROR("Decryption failed: {}", e.what());
         return false;
     }
-}
-
-std::string AesEncrypt::Base64Encode(const std::string& input) const {
-    std::string ret;
-    int i = 0;
-    int j = 0;
-    unsigned char char_array_3[3];
-    unsigned char char_array_4[4];
-
-    const unsigned char* bytes_to_encode = reinterpret_cast<const unsigned char*>(input.data());
-    size_t in_len = input.length();
-
-    while (in_len--) {
-        char_array_3[i++] = *(bytes_to_encode++);
-        if (i == 3) {
-            char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-            char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-            char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
-            char_array_4[3] = char_array_3[2] & 0x3f;
-
-            for (i = 0; i < 4; i++) {
-                ret += BASE64_CHARS[char_array_4[i]];
-            }
-            i = 0;
-        }
-    }
-
-    if (i) {
-        for (j = i; j < 3; j++) {
-            char_array_3[j] = '\0';
-        }
-
-        char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-        char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-        char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
-
-        for (j = 0; j < i + 1; j++) {
-            ret += BASE64_CHARS[char_array_4[j]];
-        }
-
-        while ((i++ < 3)) {
-            ret += '=';
-        }
-    }
-    return ret;
-}
-
-std::string AesEncrypt::Base64Decode(const std::string& input) const {
-    std::string ret;
-    std::vector<int> base64_map(256, -1);
-    for (size_t i = 0; i < BASE64_CHARS.size(); i++) {
-        base64_map[BASE64_CHARS[i]] = i;
-    }
-
-    size_t in_len = input.size();
-    int i = 0;
-    int j = 0;
-    int in_ = 0;
-    unsigned char char_array_4[4], char_array_3[3];
-
-    while (in_len-- && input[in_] != '=') {
-        char_array_4[i++] = input[in_];
-        in_++;
-        if (i == 4) {
-            for (i = 0; i < 4; i++) {
-                char_array_4[i] = base64_map[char_array_4[i]];
-            }
-
-            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-            char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
-            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
-
-            for (i = 0; i < 3; i++) {
-                ret += char_array_3[i];
-            }
-            i = 0;
-        }
-    }
-
-    if (i) {
-        for (j = i; j < 4; j++) {
-            char_array_4[j] = 0;
-        }
-
-        for (j = 0; j < 4; j++) {
-            char_array_4[j] = base64_map[char_array_4[j]];
-        }
-
-        char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-        char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
-        char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
-
-        for (j = 0; j < i - 1; j++) {
-            ret += char_array_3[j];
-        }
-    }
-    return ret;
-}
-
-std::string AesEncrypt::ShiftEncrypt(const std::string& input, const std::string& key) const {
-    std::string result;
-    result.reserve(input.size());
-
-    for (size_t i = 0; i < input.size(); ++i) {
-        unsigned char c = input[i];
-        unsigned char k = key[i % key.size()];
-        unsigned char shift = (i % 256);
-
-        result.push_back(static_cast<char>((c + k + shift) % 256));
-    }
-    return result;
-}
-
-std::string AesEncrypt::ShiftDecrypt(const std::string& input, const std::string& key) const {
-    std::string result;
-    result.reserve(input.size());
-
-    for (size_t i = 0; i < input.size(); ++i) {
-        unsigned char c = input[i];
-        unsigned char k = key[i % key.size()];
-        unsigned char shift = (i % 256);
-
-        result.push_back(static_cast<char>((c - k - shift + 512) % 256));
-    }
-    return result;
 }
 
 } // namespace cookrpc

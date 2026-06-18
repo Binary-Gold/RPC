@@ -34,6 +34,15 @@ add_library(zookeeper_mt STATIC IMPORTED)
 target_include_directories(zookeeper_mt INTERFACE ${ZOOKEEPER_INCLUDE_DIR})
 set_target_properties(zookeeper_mt PROPERTIES IMPORTED_LOCATION ${ZOOKEEPER_LIBRARY})
 
+# Bundled Crypto++
+file(GLOB CRYPTOPP_SOURCES CONFIGURE_DEPENDS "third_party/cryptopp/*.cpp")
+list(FILTER CRYPTOPP_SOURCES EXCLUDE REGEX ".*/(adhoc|bench[0-9]*|datatest|dlltest|fipsalgt|regtest|test|validat[0-9]*|cryptest)\\.cpp$")
+add_library(cryptopp STATIC ${CRYPTOPP_SOURCES})
+target_include_directories(cryptopp PUBLIC "${CMAKE_SOURCE_DIR}/third_party/cryptopp")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
+    target_compile_options(cryptopp PRIVATE -march=native)
+endif()
+
 # System-installed zstd
 find_library(ZSTD_LIBRARY libzstd.a PATHS /usr/lib/x86_64-linux-gnu NO_DEFAULT_PATH)
 add_library(zstd STATIC IMPORTED)
@@ -67,6 +76,7 @@ target_link_libraries(rpc PUBLIC
     libprotobuf
     zookeeper_mt
     zstd
+    cryptopp
     pthread
 )
 
