@@ -78,22 +78,21 @@ ZSTD_decompress(dst.data(), original_size, src.data(), src.size());
 
 ## 加密 (`encrypt/aes_encrypt.cpp`)
 
-```cpp
-// 加密流程:
-随机生成 session_key(32B)
-→ ShiftEncrypt(data, session_key)
-→ ShiftEncrypt(session_key, master_key)
-→ 拼接: [加密的key][加密的data]
-→ Base64Encode
+使用 Crypto++ 库的 AES-128-CBC：
 
-// 解密流程:
-Base64Decode
-→ 切出 encrypted_key(前32B)
-→ ShiftDecrypt(key, master_key) → session_key
-→ ShiftDecrypt(data, session_key) → 明文
+```cpp
+// 加密：
+随机生成 16 字节 IV（AutoSeededRandomPool，硬件熵源）
+→ CBC_Mode<AES>::Encryption（AES-NI 硬件加速）
+→ IV(16B) + 密文 → Base64 编码 → 发送
+
+// 解密：
+Base64 解码 → 提取 IV（前 16B）
+→ CBC_Mode<AES>::Decryption（同样 AES-NI）
+→ 明文
 ```
 
-注意：当前是 handcrafted ShiftEncrypt，仅作演示。生产环境替换为真正的 AES。
+IV 随机，每次加密同一明文产生不同密文。IV 不保密，拼接在密文头一起发送。密钥在 Imp 构造时 SHA-256 派生。已从 v1 手写 Shift 迁移到标准 AES。
 
 ## 关键设计决策
 

@@ -30,7 +30,7 @@
 ### QPS 天花板 ~5万
 
 不管 20 个还是 200 个客户端，吞吐都稳在 ~5 万——说明服务端 CPU 已饱和。
-瓶颈在 AES 加密（随机数生成 ~11%）+ zstd 压缩（~7%）+ 线程池锁竞争（~4%），服务端 CPU 已顶满。
+瓶颈在 zstd 压缩（~8%）+ 内核 TCP 发送（~22%）+ malloc/free（~5%），服务端 CPU 已顶满。
 
 ### Payload 影响小
 
@@ -75,61 +75,53 @@
 
 ## 性能瓶颈定位（perf 火焰图实测）
 
-在压测期间对 **服务端进程**（`servers_main`）进行 `perf record` 采样：
+用 `./perf.sh` 一键采集服务端热点：
 
 ```bash
-# 1. 起服务端
-./build/servers_main &
-
-# 2. 记录服务端 CPU 热点（在 benchmark 跑的同时）
-perf record -g -F 99 -p $(pgrep servers_main) -o /tmp/perf_server.data -- sleep 10 &
-./build/benchmark 50 100
-
-# 3. 生成火焰图
-perf script -i /tmp/perf_server.data | \
-  FlameGraph/stackcollapse-perf.pl | \
-  FlameGraph/flamegraph.pl --colors=hot > flamegraph_server.svg
+./perf.sh              # 默认 50 客户端 × 1000 次
+./perf.sh 20 5000      # 自定义参数
 ```
 
-### 实测瓶颈拆解
+### 实测瓶颈拆解（Crypto++ AES-CBC 版）
 
 | 瓶颈 | 占比 | 说明 |
 |------|------|------|
-| AES 加密（`GenerateRandomBytes` + `mt19937`） | **~11%** | 每次加密都生成随机密钥 |
-| AES 解密（`ShiftDecrypt`） | **~5%** | Shift 解密算法 |
-| zstd 压缩（`ZSTD_compressBlock_doubleFast` + FSE） | **~7%** | fast 模式下仍占 7% |
-| `pthread_mutex_unlock`（线程池锁） | **~4%** | 10 个线程抢 `queue_mutex_` |
-| `__memcmp_avx2_movbe`（内存比较） | **~5%** | AES 解密相关的缓冲区比较 |
+| 内核 TCP 发送（`tcp_sendmsg` → `ip_queue_xmit`） | **~22%** | 服务端写响应走内核协议栈 |
+| zstd 压缩（`HUF_buildCTable` + `FSE_buildCTable` + `ZSTD_compressBlock`） | **~8%** | 压缩占最大用户态热点 |
+| Crypto++ 内部（Base64 编解码 + Pipeline Filter） | **~3%** | 加解密封装的必要开销 |
+| malloc/free（`_int_malloc` + `_int_free`） | **~5%** | Crypto++ 管道对象每次请求构造/析构 |
 | 线程空闲等待（`pthread_cond_wait`） | **~17%** | 线程在等任务，不是瓶颈 |
-| protobuf 序列化 | ~0.7% | 轻如鸿毛 |
-| zstd 解压 | ~0.3% | 也很轻 |
+| protobuf 序列化 | ~1% | 轻如鸿毛 |
+
+### 加密方案迁移记录
+
+| 阶段 | 方案 | 瓶颈 | QPS |
+|------|------|------|-----|
+| v1 | 手写 Shift 加密 + mt19937 随机数 | AES ~16%（随机数 ~11% + Shift ~5%） | ~5 万 |
+| v2 | Crypto++ AES-128-CBC + 随机 IV | **AES 消失**，zstd ~8% 成为最大热点 | ~5 万 |
+
+迁移到 Crypto++ 后，加密开销从 ~16% 降到 ~1%，省出来的 CPU 时间被 zstd 压缩和内核 TCP 发送吃回。总 QPS 未变，但热点从"意外的手写密码学"迁移到了"可控的压缩和网络栈"——后者才是 RPC 框架该花时间的地方。
 
 ### 结论
 
-1. **AES 是最大瓶颈** — `GenerateRandomBytes` + `mt19937` 每次请求生成随机密钥，占 CPU 11%。换成预生成密钥池或硬件 AES-NI 指令，这块能砍掉一大半
-2. **zstd 不是问题** — fast 模式已经够快，压缩 7% 在可接受范围
-3. **protobuf 很轻** — 0.7% 不值得优化
-4. **锁 ~4%** — 换成无锁队列能省掉，但不是最大痛点
-5. **17% 空闲等待** — 10 个线程没跑满，QPS 受限于 CPU 算力而非线程数。减少线程、提高单线程吞吐才能提 QPS
+1. **加密已不构成瓶颈** — Crypto++ AES-NI 硬件加速，加密开销可忽略
+2. **zstd 是最大用户态热点** — fast 模式占 ~8%，降压缩级别可直接提 QPS
+3. **TCP 发送 ~22%** — localhost 内核协议栈开销，非框架问题
+4. **内存分配 ~5%** — Crypto++ 每次构造管道对象，复用成员可消除
+5. **protobuf 依然很轻** — ~1% 不值得优化
 
 ### 下一步优化方向
 
 | 优先级 | 方向 | 预计收益 |
 |--------|------|---------|
-| **P0** | AES 预生成密钥池，避免每包调 mt19937 | AES 开销从 ~16% → ~5% |
-| P1 | zstd 压缩级别从默认 3 → 1 | zstd 从 ~7% → ~2% |
-| P2 | 无锁队列替代 `std::mutex` | 锁 ~4% → ~0.5% |
+| P1 | zstd 压缩级别从默认 3 → 1 | zstd 从 ~8% → ~2%，预计 QPS +6% |
+| P2 | Crypto++ 管道对象复用，避免每请求构造 | malloc ~5% → ~1% |
+| P3 | 无锁队列替代 `std::mutex` | 锁 ~2% → ~0.5% |
 
 ### 火焰图
 
-**服务端（真正的瓶颈）：**
-![perf 服务端火焰图](../flamegraph_server.svg)
-
-**客户端（仅为参考，大部分时间在等 select）：**
-![perf 客户端火焰图](../flamegraph.svg)
-
-
-
+**服务端 v2（Crypto++ AES，50 客户端 × 1000 次，44k QPS）：**
+![perf 服务端火焰图 v2](../flamegraph.svg)
 
 
 ## 如何压测
